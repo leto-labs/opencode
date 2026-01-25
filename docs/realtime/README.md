@@ -1,0 +1,134 @@
+# OpenAI Realtime API Integration
+
+This documentation covers voice support for opencode using OpenAI's Realtime API with a **direct client connection architecture**.
+
+## Overview
+
+Unlike traditional TTS/STT workflows, the Realtime API provides:
+- **Native bidirectional audio streaming** via WebSocket/WebRTC
+- **Server-side Voice Activity Detection (VAD)** for natural turn-taking
+- **Interruption support** - users can interrupt the assistant mid-response
+- **Integrated tool calling** during voice conversations
+- **~300-500ms end-to-end latency** vs 1.5-4s for STT+LLM+TTS pipelines
+
+## Architecture
+
+The web client connects **directly** to OpenAI for audio, while the OpenCode server handles async operations.
+
+```
+┌─────────────────┐      WebRTC/WS (direct)      ┌─────────────────┐
+│   Web Client    │◄────────────────────────────►│  OpenAI Realtime│
+│                 │         (~300ms)              │       API       │
+│  🎤 Microphone  │                               │                 │
+│  🔊 Speaker     │                               │  - VAD          │
+│  📝 Transcript  │                               │  - STT/TTS      │
+└────────┬────────┘                               └─────────────────┘
+         │
+         │ HTTP (async, latency-tolerant)
+         │  - Transcript persistence
+         │  - Tool execution
+         │  - Ephemeral key generation
+         ▼
+┌─────────────────┐
+│  OpenCode Server│
+│                 │
+│  - Storage      │
+│  - Tool Runner  │
+│  - Key Manager  │
+└─────────────────┘
+```
+
+### Why Direct Connection?
+
+Voice requires ultra-low latency. Proxying audio through a server adds 100-400ms per round-trip, pushing total latency to 700-900ms - unacceptable for natural conversation.
+
+**Direct connection** keeps audio fast while using the server for:
+- **Ephemeral keys**: Main API key stays server-side
+- **Tool execution**: Server has filesystem access, runs sandboxed
+- **Persistence**: Transcripts stored asynchronously
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](./architecture.md) | Detailed system design |
+| [Decisions](./decisions.md) | Key decisions and trade-offs |
+| [OpenAI API](./openai-api.md) | API reference and events |
+| [Tool Integration](./tool-integration.md) | How tools work in voice mode |
+| [Types](./types.md) | TypeScript type definitions |
+| [Why Realtime](./why-realtime.md) | Why not STT+LLM+TTS |
+
+## Implementation Phases
+
+| Phase | Focus | Server Role |
+|-------|-------|-------------|
+| [Phase 1](./PHASE-1.md) | Text chat via SDK | None (dev only) |
+| [Phase 2](./PHASE-2.md) | Transcript sync | Storage |
+| [Phase 3](./PHASE-3.md) | Voice I/O | Storage |
+| [Phase 4](./PHASE-4.md) | Tool execution | Storage + Execution |
+| [Phase 5](./PHASE-5.md) | Ephemeral keys | Security + Storage + Execution |
+
+## Quick Start
+
+```typescript
+// Client-side (development only - uses raw API key)
+import { OpenAIRealtimeWebSocket } from "@openai/agents-realtime"
+
+const transport = new OpenAIRealtimeWebSocket({
+  apiKey: "sk-...",
+  model: "gpt-4o-realtime-preview",
+  useInsecureApiKey: true,
+})
+
+await transport.connect({
+  initialSessionConfig: {
+    voice: "alloy",
+    instructions: "You are a helpful assistant.",
+  },
+})
+
+// Send text (Phase 1)
+transport.sendMessage("Hello!")
+
+// Send audio (Phase 3)
+transport.sendAudio(pcm16AudioBuffer)
+```
+
+## File Structure
+
+```
+docs/realtime/              # Documentation (this folder)
+├── README.md
+├── architecture.md
+├── decisions.md
+├── openai-api.md
+├── tool-integration.md
+├── types.md
+├── why-realtime.md
+└── PHASE-*.md
+
+src/realtime/               # Server implementation
+└── server/
+    ├── routes.ts           # API endpoints
+    ├── transcript.ts       # Persistence
+    ├── tools.ts            # Tool execution
+    └── ephemeral.ts        # Key generation
+
+packages/web/src/           # Client implementation
+└── hooks/
+    ├── useRealtime.ts
+    ├── useAudioCapture.ts
+    └── useAudioPlayback.ts
+```
+
+## Dependencies
+
+- `@openai/agents-realtime` - OpenAI's official Realtime SDK
+- Web Audio API for microphone/speaker access
+- Existing opencode session/storage system
+
+## Links
+
+- [OpenAI Realtime Guide](https://platform.openai.com/docs/guides/realtime)
+- [OpenAI Agents SDK](https://github.com/openai/openai-agents-js)
+- [Realtime API Reference](https://platform.openai.com/docs/api-reference/realtime)
