@@ -1,401 +1,428 @@
-# Phase 3: Enable Voice
+# Phase 3: Client-Side Model Integration
+
+**Status: IN PROGRESS**
 
 ## Goal
 
-Enable full voice input and output on the client. User can speak, hear responses, and see the transcript in real-time. All transcripts continue to sync to the OpenCode server.
+Integrate GPT Realtime as a selectable model in the UI. When selected:
+- Auto-connect to the realtime agent
+- Route text messages through transcript endpoint AND send to realtime agent
+- Show speaker (audio output) and microphone (audio input) control buttons
+- Store assistant responses via transcript endpoint
 
 ## Architecture
 
 ```
-┌─────────────────┐      WebRTC (audio)      ┌─────────────────┐
-│   Web Client    │◄────────────────────────►│  OpenAI Realtime│
-│                 │                           │       API       │
-│  🎤 Microphone  │                           │                 │
-│  🔊 Speaker     │                           │  - VAD          │
-│  📝 Transcript  │                           │  - STT/TTS      │
-└────────┬────────┘                           └─────────────────┘
-         │
-         │ HTTP (transcript sync)
-         ▼
-┌─────────────────┐
-│  OpenCode Server│
-└─────────────────┘
+┌─────────────────────────────────────────────────┐
+│   Web Client                                    │
+│                                                 │
+│  Model Picker ──── "GPT Realtime" selected      │
+│  ├── Sonnet                                     │
+│  ├── Opus                                       │
+│  └── GPT Realtime (client-side)                 │
+│                    ↓                            │
+│           Auto-connect to agent                 │
+│                                                 │
+│  [🔊 Speaker] [🎤 Microphone]                   │
+│   └── mute/unmute output  └── muted (slash) /   │
+│                               recording (red)    │
+└─────────────────┬───────────────────────────────┘
+                  │
+                  ├──── Text input ───► POST /session/:id/transcript
+                  │                     + voiceMode.sendText()
+                  │
+                  └──── Voice input ──► Handled by WebRTC transport
+                                        history_added → POST transcript
 ```
 
-## Client Implementation
+## Key Insight
 
-### 1. Audio Capture Setup
+Models come from `providers.connected()` which fetches from the server. GPT Realtime is **client-side only** - OpenAI Realtime API doesn't work with server-side inference.
+
+**Simplest approach**: Inject the "GPT Realtime" model into the client-side model list as a pseudo-model. Detect when selected and change message routing behavior.
+
+## Implementation
+
+### Step 1: Add Client-Side Model to Model List
+
+Modify `packages/app/src/context/local.tsx`:
 
 ```typescript
-// src/hooks/useAudioCapture.ts
+// In the model section, after `available` memo:
+const clientSideModels = createMemo(() => [
+  {
+    id: "gpt-realtime",
+    name: "GPT Realtime",
+    provider: {
+      id: "openai-realtime",
+      name: "OpenAI Realtime",
+      // ... minimal provider shape
+    },
+    clientSide: true,  // Flag to identify client-side models
+  },
+])
 
-import { useRef, useCallback, useState } from "react"
-
-export function useAudioCapture() {
-  const [isCapturing, setIsCapturing] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const audioContextRef = useRef<AudioContext | null>(null)
-  const processorRef = useRef<ScriptProcessorNode | null>(null)
-
-  const startCapture = useCallback(async (onAudioData: (data: ArrayBuffer) => void) => {
-    try {
-      // Request microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 24000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      })
-
-      streamRef.current = stream
-
-      // Set up audio processing
-      const audioContext = new AudioContext({ sampleRate: 24000 })
-      audioContextRef.current = audioContext
-
-      const source = audioContext.createMediaStreamSource(stream)
-      const processor = audioContext.createScriptProcessor(4096, 1, 1)
-      processorRef.current = processor
-
-      processor.onaudioprocess = (event) => {
-        const inputData = event.inputBuffer.getChannelData(0)
-        // Convert Float32 to Int16
-        const int16Data = new Int16Array(inputData.length)
-        for (let i = 0; i < inputData.length; i++) {
-          int16Data[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768))
-        }
-        onAudioData(int16Data.buffer)
-      }
-
-      source.connect(processor)
-      processor.connect(audioContext.destination)
-
-      setIsCapturing(true)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)))
-    }
-  }, [])
-
-  const stopCapture = useCallback(() => {
-    if (processorRef.current) {
-      processorRef.current.disconnect()
-      processorRef.current = null
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close()
-      audioContextRef.current = null
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop())
-      streamRef.current = null
-    }
-    setIsCapturing(false)
-  }, [])
-
-  return {
-    isCapturing,
-    error,
-    startCapture,
-    stopCapture,
-  }
-}
+// Merge into `list` memo
+const list = createMemo(() => [
+  ...available().map(m => ({ ...m, clientSide: false })),
+  ...clientSideModels(),
+])
 ```
 
-### 2. Audio Playback
+**Key files to modify:**
+- `packages/app/src/context/local.tsx:114-332` - Model state management
+- `packages/app/src/hooks/use-providers.ts` - May need to expose a way to add client-side providers
+
+### Step 2: Detect Client-Side Model in Prompt Input
+
+Modify `packages/app/src/components/prompt-input.tsx`:
 
 ```typescript
-// src/hooks/useAudioPlayback.ts
+// Add helper to check if current model is client-side
+const isClientSideModel = createMemo(() => {
+  const model = local.model.current()
+  return model?.clientSide === true
+})
 
-import { useRef, useCallback, useState } from "react"
-
-export function useAudioPlayback() {
-  const [isPlaying, setIsPlaying] = useState(false)
-  const audioContextRef = useRef<AudioContext | null>(null)
-  const queueRef = useRef<ArrayBuffer[]>([])
-  const isProcessingRef = useRef(false)
-
-  const init = useCallback(() => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext({ sampleRate: 24000 })
-    }
-  }, [])
-
-  const playChunk = useCallback(async (audioData: ArrayBuffer) => {
-    init()
-    queueRef.current.push(audioData)
-
-    if (isProcessingRef.current) return
-    isProcessingRef.current = true
-
-    while (queueRef.current.length > 0) {
-      const chunk = queueRef.current.shift()!
-      const audioContext = audioContextRef.current!
-
-      // Convert Int16 to Float32
-      const int16Data = new Int16Array(chunk)
-      const float32Data = new Float32Array(int16Data.length)
-      for (let i = 0; i < int16Data.length; i++) {
-        float32Data[i] = int16Data[i] / 32768
-      }
-
-      const audioBuffer = audioContext.createBuffer(1, float32Data.length, 24000)
-      audioBuffer.getChannelData(0).set(float32Data)
-
-      const source = audioContext.createBufferSource()
-      source.buffer = audioBuffer
-      source.connect(audioContext.destination)
-
-      setIsPlaying(true)
-
-      await new Promise<void>((resolve) => {
-        source.onended = () => resolve()
-        source.start()
-      })
-    }
-
-    isProcessingRef.current = false
-    setIsPlaying(false)
-  }, [init])
-
-  const stop = useCallback(() => {
-    queueRef.current = []
-    setIsPlaying(false)
-  }, [])
-
-  return {
-    isPlaying,
-    playChunk,
-    stop,
-    init,
-  }
-}
+// Show voice mode button only when GPT Realtime is selected
+<Show when={isClientSideModel()}>
+  <Tooltip placement="top" value="Voice mode">
+    <Button
+      type="button"
+      variant="ghost"
+      class="size-6"
+      classList={{
+        "text-12-success": voiceMode.status() === "connected",
+        "animate-pulse": voiceMode.status() === "connecting",
+      }}
+      onClick={() => voiceMode.toggle()}
+      aria-label="Voice mode"
+    >
+      <Icon name="microphone" class="size-4.5" />
+    </Button>
+  </Tooltip>
+</Show>
 ```
 
-### 3. Update Realtime Hook for Voice
+### Step 3: Route Messages Through Transcript Endpoint
+
+In `handleSubmit` of `packages/app/src/components/prompt-input.tsx`:
 
 ```typescript
-// Update useRealtimeV2.ts
+// After all the setup code, before sending:
 
-import { useAudioCapture } from "./useAudioCapture"
-import { useAudioPlayback } from "./useAudioPlayback"
+if (isClientSideModel()) {
+  // Use transcript endpoint instead of prompt endpoint
+  clearInput()
+  addOptimisticMessage()
 
-interface UseRealtimeV2Options {
-  apiKey: string
-  model?: string
-  sessionID?: string
-  serverUrl?: string
-  enablePersistence?: boolean
-  enableVoice?: boolean        // NEW
-  voice?: string               // NEW: alloy, echo, fable, onyx, nova, shimmer
-}
-
-export function useRealtimeV2(options: UseRealtimeV2Options) {
-  const audioCapture = useAudioCapture()
-  const audioPlayback = useAudioPlayback()
-
-  // ... existing state ...
-
-  const connect = useCallback(async () => {
-    // ... existing setup ...
-
-    // Handle audio output from OpenAI
-    if (options.enableVoice) {
-      transport.on("audio", (event) => {
-        audioPlayback.playChunk(event.data)
-      })
-
-      transport.on("audio_interrupted", () => {
-        audioPlayback.stop()
-      })
-    }
-
-    // Connect with audio modalities
-    await transport.connect({
-      model,
-      initialSessionConfig: {
-        modalities: options.enableVoice ? ["text", "audio"] : ["text"],
-        voice: options.voice ?? "alloy",
-        input_audio_format: "pcm16",
-        output_audio_format: "pcm16",
-        input_audio_transcription: {
-          model: "whisper-1",
-        },
-        turn_detection: {
-          type: "server_vad",
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 500,
-        },
-        instructions: "You are a helpful assistant. Keep responses concise for voice.",
-      },
-    })
-
-    // Start audio capture if voice enabled
-    if (options.enableVoice) {
-      await audioCapture.startCapture((audioData) => {
-        transport.sendAudio(audioData)
-      })
-    }
-
-    // ... rest of setup ...
-  }, [/* deps */])
-
-  const disconnect = useCallback(() => {
-    audioCapture.stopCapture()
-    audioPlayback.stop()
-    // ... existing disconnect logic ...
-  }, [/* deps */])
-
-  // Toggle mute
-  const toggleMute = useCallback(() => {
-    // Stop/start audio capture
-    if (audioCapture.isCapturing) {
-      audioCapture.stopCapture()
-    } else {
-      audioCapture.startCapture((audioData) => {
-        transportRef.current?.sendAudio(audioData)
-      })
-    }
-  }, [audioCapture])
-
-  return {
-    // ... existing returns ...
-    isCapturing: audioCapture.isCapturing,
-    isPlaying: audioPlayback.isPlaying,
-    toggleMute,
-  }
-}
-```
-
-### 4. Voice UI Component
-
-```typescript
-// src/components/RealtimeV2Voice.tsx
-
-import { useRealtimeV2 } from "../hooks/useRealtimeV2"
-
-export function RealtimeV2Voice({ sessionID, apiKey }: Props) {
-  const {
-    status,
-    messages,
-    error,
-    connect,
-    disconnect,
-    isCapturing,
-    isPlaying,
-    toggleMute,
-  } = useRealtimeV2({
-    apiKey,
-    sessionID,
-    enableVoice: true,
-    enablePersistence: true,
-    voice: "alloy",
+  // 1. Store user message via transcript endpoint
+  await client.fetch(`/session/${session.id}/transcript`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      role: "user",
+      text,
+      metadata: { source: "text" },
+    }),
   })
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Status Bar */}
-      <div className="flex items-center gap-4 p-4 border-b">
-        <button
-          onClick={status === "connected" ? disconnect : connect}
-          className={`px-4 py-2 rounded ${
-            status === "connected" ? "bg-red-500" : "bg-green-500"
-          } text-white`}
-        >
-          {status === "connected" ? "Disconnect" : "Connect"}
-        </button>
+  // 2. Send to realtime agent (if connected)
+  if (voiceMode.status() === "connected") {
+    voiceMode.sendText(text)  // Need to add this method
+  }
 
-        {status === "connected" && (
-          <button
-            onClick={toggleMute}
-            className={`px-4 py-2 rounded ${
-              isCapturing ? "bg-blue-500" : "bg-gray-500"
-            } text-white`}
-          >
-            {isCapturing ? "🎤 Listening" : "🔇 Muted"}
-          </button>
-        )}
-
-        {isPlaying && <span className="text-green-500">🔊 Speaking...</span>}
-      </div>
-
-      {/* Transcript */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`mb-4 ${msg.role === "user" ? "text-right" : "text-left"}`}
-          >
-            <div
-              className={`inline-block p-3 rounded-lg max-w-[80%] ${
-                msg.role === "user"
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-200 text-gray-900"
-              }`}
-            >
-              {msg.content}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Error Display */}
-      {error && (
-        <div className="p-4 bg-red-100 text-red-700">
-          {error.message}
-        </div>
-      )}
-    </div>
-  )
+  // Note: Assistant response handling will come from voice-mode events
+  // and will call the transcript endpoint with role: "assistant"
+  return
 }
+
+// Existing server-side prompt flow...
 ```
 
-## Browser Permissions
+### Step 4: Add Text Input to Voice Mode
 
-The app will need to request microphone permission:
+Modify `packages/app/src/context/voice-mode.tsx`:
 
 ```typescript
-// Check permission before connecting
-const checkMicrophonePermission = async () => {
-  try {
-    const result = await navigator.permissions.query({ name: "microphone" as PermissionName })
-    return result.state
-  } catch {
-    return "prompt" // Fallback for browsers that don't support permissions API
-  }
+// Add sendText method to send text input to realtime session
+const sendText = (text: string) => {
+  if (!session || status() !== "connected") return
+
+  // Use RealtimeSession's text input capability
+  session.sendText(text)
+}
+
+return {
+  status,
+  error,
+  toggle,
+  connect,
+  disconnect,
+  sendText,  // NEW
 }
 ```
 
-## Audio Format Notes
+### Step 5: Store Assistant Responses as Transcripts
 
-- OpenAI Realtime uses **PCM16 at 24kHz, mono**
-- `input_audio_format: "pcm16"` and `output_audio_format: "pcm16"`
-- Web Audio API uses Float32, so we convert:
-  - Float32 → Int16 for sending
-  - Int16 → Float32 for playback
+Modify `packages/app/src/context/voice-mode.tsx` to call transcript endpoint on responses:
+
+```typescript
+// In connect(), after setting up event handlers:
+session.on("history_added", async (item: unknown) => {
+  console.log("[voice] history_added", item)
+
+  // Extract transcript from history item
+  const historyItem = item as { role?: string; content?: string }
+  if (!historyItem.role || !historyItem.content) return
+
+  // Store transcript on server
+  const sessionID = getCurrentSessionID()  // Need to pass this in
+  if (!sessionID) return
+
+  await fetch(`${server.url}/session/${sessionID}/transcript`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      role: historyItem.role,
+      text: historyItem.content,
+      metadata: { source: "realtime" },
+    }),
+  })
+})
+```
+
+## Tasks
+
+1. **Add client-side model to picker**
+   - Inject GPT Realtime model into `local.model.list()`
+   - Add `clientSide` flag to model type
+   - Ensure it appears in model picker UI
+
+2. **Conditional voice button**
+   - Show mute/unmute button only when GPT Realtime selected
+   - Hide for server-side models
+
+3. **Route text messages**
+   - Detect client-side model in `handleSubmit`
+   - Use transcript endpoint + `voiceMode.sendText()` instead of prompt endpoint
+
+4. **Store assistant responses**
+   - Listen to realtime session events
+   - POST transcripts to server for storage
+
+5. **UI updates**
+   - Messages should appear in chat UI from transcript sync
+   - Consider optimistic updates for user messages
 
 ## Success Criteria
 
-- [ ] Microphone capture works
-- [ ] Audio streams to OpenAI
-- [ ] VAD detects speech start/stop
-- [ ] Audio responses play back
-- [ ] Transcripts appear in real-time
-- [ ] Transcripts sync to server
-- [ ] Mute/unmute works
-- [ ] Audio playback stops on interruption
+- [x] "GPT Realtime" appears in model picker
+- [x] Audio control buttons only shown when GPT Realtime selected
+- [x] Auto-connect to realtime agent when GPT Realtime is selected
+- [x] Text messages route through transcript endpoint when using GPT Realtime
+- [x] Text messages are sent to realtime agent (via `voiceMode.sendText()`)
+- [x] Speaker button (mute/unmute audio output)
+- [x] Microphone button with distinct visual states (muted with slash / recording)
+- [x] SDK pattern used for all API calls (regenerated SDK, updated client code)
+- [x] Assistant responses stored via transcript endpoint (captured from `response.output_audio_transcript.done` event)
+- [x] Messages appear in chat UI (both user and assistant messages persist after refresh)
+- [x] Real-time UI updates for assistant messages (fixed: directory-specific SDK client for SSE event routing)
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `packages/app/src/context/local.tsx` | Add client-side model injection |
+| `packages/app/src/components/prompt-input.tsx` | Conditional routing, conditional voice button |
+| `packages/app/src/context/voice-mode.tsx` | Add `sendText()`, transcript storage for responses |
+
+## Key Files to Reference
+
+| File | What to look at |
+|------|-----------------|
+| `packages/app/src/context/local.tsx:114-332` | Model state management |
+| `packages/app/src/hooks/use-providers.ts` | How providers are fetched |
+| `packages/app/src/components/dialog-select-model.tsx` | Model picker UI |
+| `packages/app/src/components/prompt-input.tsx:1103-1591` | Message submission flow |
+| `packages/opencode/src/server/routes/session.ts:940-1060` | Transcript endpoint |
 
 ## Notes
 
-- VAD (Voice Activity Detection) is handled server-side by OpenAI
-- We use ScriptProcessorNode (deprecated but widely supported)
-- For production, consider using AudioWorklet instead
-- Echo cancellation is enabled in getUserMedia options
+- No audio capture/playback in this phase - transcripts only
+- If user wants to hear a response again, they can ask the agent to repeat
+- Realtime events are logged to console (from Phase 1) - we just need to store them
+- SDK client doesn't have transcript endpoint yet - use raw fetch for now
 
-## Next Steps
+## Clarified Behavior
 
-Phase 4 will add tool calling support, allowing the voice assistant to execute actions.
+When GPT Realtime model is selected:
+1. **Auto-connect**: Automatically connect to the realtime agent (audio input muted by default via `transport.mute(true)`)
+2. **Text messages**: Stored as transcripts AND sent to the realtime agent
+3. **Two audio control buttons**:
+   - 🎤 **Microphone** - mute/unmute audio INPUT (voice capture from user) - uses `transport.mute(boolean)` for actual WebRTC audio track control
+   - 🔊 **Speaker** - mute/unmute audio OUTPUT (agent voice playback) - uses `audioElement.muted`
+
+## Known Issues (To Fix Later)
+
+- **Session cleared on disconnect**: When toggling voice mode off, the realtime session is cleared. Should preserve session or reconnect gracefully.
+- **Session switching**: Need to handle disconnecting/reconnecting when switching between sessions in the tab bar.
+- ~~**Duplicate user messages**: User messages may appear twice in the UI (optimistic update + SSE event). Need deduplication logic.~~ **FIXED** - see "Duplicate User Messages Fix" below.
+
+## Real-Time UI Updates
+
+### Problem & Solution
+
+Real-time UI updates rely on Server-Sent Events (SSE) to push `message.updated` and `message.part.updated` events from the server to the client. The key issue was that `VoiceModeProvider` was using `useGlobalSDK()` which creates a client WITHOUT the `x-opencode-directory` header.
+
+When the transcript endpoint was called without the directory header:
+1. Server fell back to `process.cwd()` as the directory
+2. SSE events were published to the wrong directory
+3. Client was listening for events on the actual project directory
+4. Directory mismatch = events not received
+
+### Fix Applied
+
+Use a **directory-specific SDK client** in `voice-mode.tsx` for all API calls that need SSE event routing:
+
+```typescript
+// In voice-mode.tsx
+const getDirectoryClient = () => {
+  const directory = currentDirectory()
+  if (!directory) return null
+  return createOpencodeClient({
+    baseUrl: globalSDK.url,
+    fetch: platform.fetch,
+    directory, // This sets the x-opencode-directory header
+  })
+}
+
+// For transcript storage (requires directory for SSE routing)
+const storeTranscript = async (role: "user" | "assistant", text: string) => {
+  const client = getDirectoryClient()
+  if (!client) return // Directory not set yet
+  await client.session.transcript.add({ sessionID, role, text, metadata: { source: "realtime" } })
+}
+
+// For ephemeral key (falls back to global client if no directory)
+const fetchEphemeralKey = async () => {
+  const client = getDirectoryClient() ?? globalSDK.client
+  const response = await client.realtime.session()
+  return response.data?.value
+}
+```
+
+The directory is set via `voiceMode.setSessionContext(sessionID, directory)` when a message is submitted, before any API calls that need SSE event routing.
+
+## Resolved: SDK Pattern vs Raw Fetch
+
+### Problem (RESOLVED)
+
+We initially used raw `fetch()` calls which returned HTML instead of JSON (SPA fallback). The root cause was that the SDK wasn't regenerated after adding new server routes.
+
+### Solution Applied
+
+1. **Regenerated the SDK**: `cd packages/sdk/js && bun run build`
+2. **Updated client code** to use SDK pattern:
+
+```typescript
+// prompt-input.tsx - Store user transcript
+await sdk.client.session.transcript.add({
+  sessionID: session.id,
+  role: "user",
+  text,
+  metadata: { source: "text" },
+})
+
+// voice-mode.tsx - Store assistant transcript
+await globalSDK.client.session.transcript.add({
+  sessionID,
+  role,
+  text,
+  metadata: { source: "realtime" },
+})
+
+// voice-mode.tsx - Get ephemeral key
+const response = await globalSDK.client.realtime.session()
+const ephemeralKey = response.data?.value
+```
+
+### Why This Matters
+
+1. **Consistency**: All API calls now use the SDK pattern
+2. **Type Safety**: Generated types ensure correct request/response shapes
+3. **Headers**: SDK automatically includes `x-opencode-directory` header
+4. **Error Handling**: SDK provides consistent error handling
+5. **Maintainability**: Following conventions makes the codebase easier to maintain
+
+### Files Updated
+
+| File | Change |
+|------|--------|
+| `packages/sdk/js/src/v2/gen/*` | Regenerated with transcript & realtime types |
+| `packages/app/src/components/prompt-input.tsx` | Uses `sdk.client.session.transcript.add()` |
+| `packages/app/src/context/voice-mode.tsx` | Uses `globalSDK.client.session.transcript.add()` and `globalSDK.client.realtime.session()` |
+
+## Assistant Transcript Capture
+
+The assistant's audio responses are captured via the `transport_event` listener:
+
+```typescript
+session.on("transport_event", (event: { type: string; transcript?: string }) => {
+  // Capture complete assistant transcript when audio response is done
+  if (event.type === "response.output_audio_transcript.done" && event.transcript) {
+    console.log("[voice] assistant transcript complete:", event.transcript.substring(0, 50) + "...")
+    void storeTranscript("assistant", event.transcript)
+  }
+})
+```
+
+The OpenAI Realtime API sends transcript events:
+- `response.output_audio_transcript.delta` - Incremental transcript chunks
+- `response.output_audio_transcript.done` - Complete transcript for the audio output
+
+We capture the `.done` event which contains the full transcript text.
+
+## Duplicate User Messages Fix
+
+### Problem
+
+User messages were appearing twice in the UI when using the realtime model:
+1. Optimistic message added immediately by the client
+2. SSE event from server creating a "new" message
+
+This happened because the client wasn't passing the `messageID` to the transcript endpoint. Traditional agents pass `messageID` to the prompt endpoint, allowing the server to use the same ID and have the SSE event update the existing optimistic message rather than insert a new one.
+
+### Solution
+
+Pass the client-generated `messageID` and `partID` to the transcript endpoint:
+
+```typescript
+// prompt-input.tsx - sendClientSideMessage
+const transcriptResponse = await sdk.client.session.transcript.add({
+  sessionID: session.id,
+  role: "user",
+  text,
+  metadata: { source: "text" },
+  messageID,        // Same ID used for optimistic message
+  partID: textPart.id,  // Same ID used for optimistic part
+})
+```
+
+The server already accepted these optional parameters (added in session.ts), so the fix was:
+1. Regenerate SDK to include `messageID` and `partID` in transcript types
+2. Update client to pass these IDs when storing user transcripts
+
+### Why This Works
+
+The SSE reconciliation logic in the sync store uses binary search on message IDs:
+- If the ID exists → update the existing message
+- If the ID doesn't exist → insert a new message
+
+By passing the same `messageID` used for the optimistic message, the SSE event updates the existing entry instead of creating a duplicate.
+
+## Future Considerations
+
+- Real-time streaming of transcripts to UI
+- Voice indicator showing when assistant is speaking
+- Option to switch between voice and text input mid-conversation
