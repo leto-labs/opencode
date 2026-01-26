@@ -141,6 +141,45 @@ packages/web/src/           # Client implementation
 - Web Audio API for microphone/speaker access
 - Existing opencode session/storage system
 
+## Conventions (IMPORTANT)
+
+As this is a fork, we must **maintain conventions** with the upstream codebase.
+
+### General Principle
+
+Maintaining conventions is a **general principle** that extends beyond the specific patterns documented here. This includes but is not limited to:
+
+- **Naming**: Follow existing naming conventions for files, functions, variables, and types
+- **Structure**: Match the existing directory and file organization patterns
+- **Patterns**: Use the same architectural patterns (SDK generation, context providers, etc.)
+- **Testing**: Follow existing test structure and naming conventions
+- **Error handling**: Match existing error handling patterns
+- **Imports**: Use the same import patterns and aliases (e.g., `@/context/...`)
+
+When in doubt, look at how similar functionality is implemented elsewhere in the codebase and follow that pattern. The goal is to keep our changes as aligned as possible with the parent source to minimize merge conflicts and maintain consistency.
+
+### SDK Pattern
+All API calls from the client MUST use the generated SDK client, not raw `fetch()`:
+```typescript
+// CORRECT - Use SDK client
+await sdk.client.session.transcriptAdd({ sessionID, role, text })
+
+// WRONG - Raw fetch doesn't include proper headers
+await fetch(`${url}/session/${id}/transcript`, { ... })
+```
+
+### Adding New Routes
+When adding new server routes:
+1. Add the route in `packages/opencode/src/server/routes/*.ts`
+2. **Regenerate the SDK**: `cd packages/sdk/js && bun run build`
+3. Use the generated client in app code
+4. Add tests following existing patterns
+
+See [Architecture: Adding Routes](../architecture/adding-routes.md) for details.
+
+### Testing
+New endpoints should have tests in `packages/opencode/test/server/`.
+
 ## Links
 
 - [OpenAI Realtime Guide](https://platform.openai.com/docs/guides/realtime)

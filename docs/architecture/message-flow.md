@@ -1,8 +1,19 @@
 # OpenCode Message Flow
 
-This document describes how messages are processed in OpenCode's server-side inference architecture.
+This document describes how messages are processed in OpenCode.
 
-## Overview
+## Two Inference Modes
+
+OpenCode supports two inference modes:
+
+| Mode | Inference Location | Tool Execution | Use Case |
+|------|-------------------|----------------|----------|
+| **Server-side** | Server calls LLM provider | Server | Traditional agents (Claude, GPT-4, etc.) |
+| **Client-side** | Client handles inference | Server (relayed) | Realtime/WebRTC (GPT Realtime) |
+
+---
+
+## Server-Side Inference (Traditional)
 
 When a client sends a message via `POST /session/:id/message`, the server:
 1. Creates a user message
@@ -116,6 +127,49 @@ const info: MessageV2.Info = {
 }
 ```
 
+### 6. Optimistic Updates & MessageID
+
+The client uses **optimistic updates** for responsive UI - messages appear immediately before server confirmation. To prevent duplicates, the client generates the `messageID` and passes it to the server.
+
+**Flow:**
+```
+Client                                Server
+  │                                     │
+  │  1. Generate messageID              │
+  │     messageID = Identifier.ascending("message")
+  │                                     │
+  │  2. Add optimistic message to UI    │
+  │     (id: messageID)                 │
+  │                                     │
+  │  3. POST /session/:id/message       │
+  │     { messageID, parts, ... }       │
+  │────────────────────────────────────►│
+  │                                     │  4. Server uses SAME messageID
+  │                                     │     (not generating a new one)
+  │                                     │
+  │◄────────────────────────────────────│  5. SSE: message.updated
+  │  (messageID matches optimistic)     │     (id: messageID)
+  │                                     │
+  │  6. UI reconciles: same ID          │
+  │     = update existing, not insert   │
+```
+
+**Why this matters:**
+- Without passing `messageID`: Server generates new ID → SSE inserts duplicate message
+- With passing `messageID`: Server uses same ID → SSE updates existing message
+
+**Server-side handling (`session/prompt.ts:createUserMessage`):**
+```typescript
+const info: MessageV2.Info = {
+  id: input.messageID ?? Identifier.ascending("message"),  // Use client ID if provided
+  // ...
+}
+```
+
+This pattern is used by both inference modes:
+- **Server-side**: `POST /session/:id/message` with `messageID`
+- **Client-side**: `POST /session/:id/transcript` with `messageID`
+
 ## PromptInput Schema
 
 ```typescript
@@ -133,6 +187,96 @@ export const PromptInput = z.object({
 })
 ```
 
+---
+
+## Client-Side Inference (Realtime)
+
+For client-side models like GPT Realtime (WebRTC), inference happens in the browser. The server is used only for:
+- **Message persistence** - Store transcripts for history
+- **Tool execution** - Execute tools on behalf of the client
+
+### User Message Flow
+
+```
+Client (Browser)                    Server                         OpenAI Realtime
+      │                               │                                   │
+      │  User types message           │                                   │
+      │  messageID = Identifier.ascending("message")                      │
+      │  ┌─────────────────────┐      │                                   │
+      │  │ Optimistic update   │      │                                   │
+      │  │ (id: messageID)     │      │                                   │
+      │  └─────────────────────┘      │                                   │
+      │                               │                                   │
+      │  POST /session/:id/transcript │                                   │
+      │  { role, text, messageID }    │  ◄── Client passes messageID      │
+      │──────────────────────────────►│                                   │
+      │                               │  Use provided messageID           │
+      │                               │  Session.updateMessage()          │
+      │                               │  ─► SSE: message.updated          │
+      │◄──────────────────────────────│      (same messageID = update)    │
+      │  { messageID, partID }        │                                   │
+      │                               │                                   │
+      │  voiceMode.sendText(text)     │                                   │
+      │───────────────────────────────────────────────────────────────────►│
+      │                               │                                   │
+```
+
+**Key points:**
+- Uses `/transcript` endpoint (not `/message`) since inference happens client-side
+- Client passes `messageID` to prevent duplicates (same pattern as server-side agents)
+- SSE event uses same ID → updates optimistic message instead of inserting duplicate
+
+### Assistant Response Flow
+
+```
+Client (Browser)                    Server                         OpenAI Realtime
+      │                               │                                   │
+      │◄──────────────────────────────────────────────────────────────────│
+      │  response.output_audio_transcript.done                            │
+      │  { transcript: "..." }        │                                   │
+      │                               │                                   │
+      │  POST /session/:id/transcript │                                   │
+      │  { role: "assistant", text }  │                                   │
+      │──────────────────────────────►│                                   │
+      │                               │  Session.updateMessage()          │
+      │                               │  Session.updatePart()             │
+      │                               │  ─► SSE: message.updated          │
+      │                               │  ─► SSE: message.part.updated     │
+      │◄──────────────────────────────│                                   │
+      │  { messageID, partID }        │                                   │
+      │                               │                                   │
+      │  UI updates via SSE events    │                                   │
+```
+
+### Tool Execution Flow
+
+See [tool-flow.md](./tool-flow.md) for details on how tool calls work in both modes.
+
+### Endpoints Used
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /session/:id/transcript` | Store user/assistant transcript (accepts optional `messageID` for optimistic updates) |
+| `POST /session/:id/tool/call` | Execute tool and return result |
+
+**Note:** The `/transcript` endpoint accepts optional `messageID` and `partID` parameters. When provided, the server uses these IDs instead of generating new ones, enabling the optimistic update pattern.
+
+### SSE Event Flow
+
+Both modes use the same SSE events for real-time UI updates:
+
+```
+Server ─────────────────────────────► Client
+         SSE: message.updated          │
+         SSE: message.part.updated     │
+                                       ▼
+                                   UI updates
+```
+
+**Critical:** API calls must include the `x-opencode-directory` header for SSE events to route correctly. The SDK handles this automatically when initialized with a directory.
+
+---
+
 ## Related Files
 
 | File | Purpose |
@@ -142,3 +286,4 @@ export const PromptInput = z.object({
 | `session/message-v2.ts` | Message and part schemas |
 | `session/index.ts` | Session CRUD operations |
 | `provider/provider.ts` | Model resolution |
+| `app/src/context/voice-mode.tsx` | Client-side realtime handling |
