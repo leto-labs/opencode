@@ -16,6 +16,10 @@ import { Log } from "../../util/log"
 import { PermissionNext } from "@/permission/next"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
+import { Identifier } from "../../id/id"
+import { ToolRegistry } from "../../tool/registry"
+import type { Tool } from "../../tool/tool"
+import { Instance } from "../../project/instance"
 
 const log = Log.create({ service: "server" })
 
@@ -934,6 +938,264 @@ export const SessionRoutes = lazy(() =>
           reply: c.req.valid("json").response,
         })
         return c.json(true)
+      },
+    )
+    // ===== Client-Side Inference Endpoints =====
+    // These endpoints support sessions where inference happens client-side
+    // (e.g., voice/realtime) and the server is used only for storage and tool execution.
+    .post(
+      "/:sessionID/transcript",
+      describeRoute({
+        summary: "Add transcript",
+        description:
+          "Add a user or assistant transcript to a session without triggering agent execution. Used for client-side inference sessions.",
+        operationId: "session.transcript.add",
+        responses: {
+          200: {
+            description: "Transcript added",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    messageID: z.string(),
+                    partID: z.string(),
+                  }),
+                ),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator(
+        "json",
+        z.object({
+          role: z.enum(["user", "assistant"]),
+          text: z.string(),
+          metadata: z.record(z.string(), z.any()).optional(),
+        }),
+      ),
+      async (c) => {
+        const { sessionID } = c.req.valid("param")
+        const { role, text, metadata } = c.req.valid("json")
+
+        // Verify session exists
+        const session = await Session.get(sessionID)
+        if (!session) {
+          return c.json({ error: "Session not found" }, { status: 404 })
+        }
+
+        const now = Date.now()
+        const messageID = Identifier.ascending("message")
+
+        // Create message based on role
+        if (role === "user") {
+          const userMessage: MessageV2.User = {
+            id: messageID,
+            role: "user",
+            sessionID,
+            time: { created: now },
+            agent: "client",
+            model: { providerID: "client", modelID: "client" },
+          }
+          await Session.updateMessage(userMessage)
+        } else {
+          // For assistant messages, find the last user message to use as parentID
+          const messages = await Session.messages({ sessionID, limit: 10 })
+          const lastUserMsg = messages.reverse().find((m) => m.info.role === "user")
+          const parentID = lastUserMsg?.info.id ?? messageID
+
+          const assistantMessage: MessageV2.Assistant = {
+            id: messageID,
+            role: "assistant",
+            sessionID,
+            time: { created: now },
+            parentID,
+            modelID: "client",
+            providerID: "client",
+            mode: "client",
+            agent: "client",
+            path: { cwd: Instance.directory, root: Instance.worktree },
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          }
+          await Session.updateMessage(assistantMessage)
+        }
+
+        // Create text part
+        const partID = Identifier.ascending("part")
+        const part: MessageV2.TextPart = {
+          id: partID,
+          sessionID,
+          messageID,
+          type: "text",
+          text,
+          time: { start: now, end: now },
+          metadata,
+        }
+        await Session.updatePart(part)
+
+        // Touch session to update timestamp
+        await Session.touch(sessionID)
+
+        return c.json({ messageID, partID })
+      },
+    )
+    .post(
+      "/:sessionID/tool/call",
+      describeRoute({
+        summary: "Execute tool",
+        description:
+          "Execute a tool and return the result. Used for client-side inference sessions where the client relays tool calls from the provider.",
+        operationId: "session.tool.call",
+        responses: {
+          200: {
+            description: "Tool executed",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    callId: z.string(),
+                    result: z.any(),
+                    error: z.string().optional(),
+                  }),
+                ),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator(
+        "json",
+        z.object({
+          toolName: z.string(),
+          callId: z.string(),
+          arguments: z.record(z.string(), z.any()),
+        }),
+      ),
+      async (c) => {
+        const { sessionID } = c.req.valid("param")
+        const { toolName, callId, arguments: args } = c.req.valid("json")
+
+        // Verify session exists
+        const session = await Session.get(sessionID)
+        if (!session) {
+          return c.json({ error: "Session not found" }, { status: 404 })
+        }
+
+        // Find the tool
+        const allTools = await ToolRegistry.tools({ providerID: "openai", modelID: "gpt-4" })
+        const tool = allTools.find((t) => t.id === toolName)
+        if (!tool) {
+          return c.json({ callId, result: null, error: `Tool not found: ${toolName}` })
+        }
+
+        const startTime = Date.now()
+        const messageID = Identifier.ascending("message")
+
+        // Find the last user message to use as parentID
+        const messages = await Session.messages({ sessionID, limit: 10 })
+        const lastUserMsg = messages.reverse().find((m) => m.info.role === "user")
+        const parentID = lastUserMsg?.info.id ?? messageID
+
+        // Create assistant message to hold the tool call
+        const assistantMessage: MessageV2.Assistant = {
+          id: messageID,
+          role: "assistant",
+          sessionID,
+          time: { created: startTime },
+          parentID,
+          modelID: "client",
+          providerID: "client",
+          mode: "client",
+          agent: "client",
+          path: { cwd: Instance.directory, root: Instance.worktree },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        }
+        await Session.updateMessage(assistantMessage)
+
+        // Create tool part (initially running)
+        const partID = Identifier.ascending("part")
+        const toolPart: MessageV2.ToolPart = {
+          id: partID,
+          sessionID,
+          messageID,
+          type: "tool",
+          callID: callId,
+          tool: toolName,
+          state: {
+            status: "running",
+            input: args,
+            time: { start: startTime },
+          },
+        }
+        await Session.updatePart(toolPart)
+
+        // Execute the tool
+        const abortController = new AbortController()
+        const ctx: Tool.Context = {
+          sessionID,
+          messageID,
+          agent: "client",
+          abort: abortController.signal,
+          callID: callId,
+          metadata: () => {},
+          ask: async () => {},
+        }
+
+        try {
+          const result = await tool.execute(args, ctx)
+          const endTime = Date.now()
+
+          // Update tool part with result
+          const completedPart: MessageV2.ToolPart = {
+            ...toolPart,
+            state: {
+              status: "completed",
+              input: args,
+              output: result.output,
+              title: result.title || toolName,
+              metadata: result.metadata,
+              time: { start: startTime, end: endTime },
+            },
+          }
+          await Session.updatePart(completedPart)
+          await Session.touch(sessionID)
+
+          return c.json({ callId, result: result.output })
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : String(err)
+          const endTime = Date.now()
+
+          // Update tool part with error
+          const errorPart: MessageV2.ToolPart = {
+            ...toolPart,
+            state: {
+              status: "error",
+              input: args,
+              error: errorMessage,
+              time: { start: startTime, end: endTime },
+            },
+          }
+          await Session.updatePart(errorPart)
+          await Session.touch(sessionID)
+
+          return c.json({ callId, result: null, error: errorMessage })
+        }
       },
     ),
 )

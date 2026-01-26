@@ -1,337 +1,192 @@
-# Phase 2: Transcript Persistence
+# Phase 2: Server-Side Transcript & Tool Execution
+
+**Status: COMPLETE**
 
 ## Goal
 
-Add transcript persistence to the OpenCode server. The client continues to connect directly to OpenAI, but now also sends transcript events to the server for storage. The web app displays the conversation from the stored session.
+Add server-side endpoints for transcript storage and tool execution. This enables the architecture where the client connects directly to a provider (e.g., OpenAI Realtime) while using the opencode server for:
+1. **Transcript persistence** - Store conversation history
+2. **Tool execution** - Execute tools in the server's sandboxed environment
+
+This phase is **server-side only** and decoupled from voice/realtime. The endpoints work for any client that needs to store transcripts or execute tools independently of the main agent loop.
 
 ## Architecture
 
 ```
-┌─────────────────┐        WebSocket         ┌─────────────────┐
-│   Web Client    │◄────────────────────────►│  OpenAI Realtime│
-│                 │                           │       API       │
-└────────┬────────┘                           └─────────────────┘
+┌─────────────────┐                          ┌─────────────────┐
+│   Any Client    │◄────── Direct ──────────►│    Provider     │
+│  (Web, Voice,   │       Connection         │  (OpenAI, etc)  │
+│   CLI, etc)     │                          └─────────────────┘
+└────────┬────────┘
          │
-         │ POST /realtime-v2/:sessionID/transcript
-         │ (Send transcript events)
-         │
+         │ POST /session/:id/transcript  (store conversation)
+         │ POST /session/:id/tool/call   (execute tool)
+         │ GET  /session/:id/message     (retrieve history)
          ▼
 ┌─────────────────┐
 │  OpenCode Server│
 │                 │
-│  - Create/update│
-│    session      │
-│  - Store parts  │
-│  - No agent     │
-│    execution    │
+│  - Storage      │
+│  - Tool Runner  │
+│  - No Agent     │
 └─────────────────┘
 ```
 
-## Server Implementation
+## Existing Infrastructure
 
-### 1. Transcript API Endpoint
+### Routes to Leverage
 
-```typescript
-// src/realtime-v2/server/routes.ts
+| Route | File | Purpose |
+|-------|------|---------|
+| `POST /session` | `routes/session.ts:185` | Create session |
+| `GET /session/:id/message` | `routes/session.ts:546` | Get all messages |
+| `GET /session/:id/message/:msgId` | `routes/session.ts:585` | Get single message |
+| `GET /tool` | `routes/experimental.ts:38` | List available tools |
+| `GET /tool/ids` | `routes/experimental.ts:15` | List tool IDs |
 
-import { Hono } from "hono"
-import { z } from "zod"
-import { validator } from "hono-openapi"
-import { Session } from "../../session"
-import { MessageV2 } from "../../session/message-v2"
-import { Identifier } from "../../id/id"
+### Data Model
 
-const TranscriptEventSchema = z.object({
-  type: z.enum(["user_transcript", "assistant_transcript", "speech_started", "speech_stopped"]),
-  text: z.string().optional(),
-  item_id: z.string().optional(),
-  response_id: z.string().optional(),
-  timestamp: z.number(),
-})
+Messages are stored via `MessageV2` (`session/message-v2.ts`):
+- **TextPart** - Text content with optional `metadata` field (`z.record(z.string(), z.any())`)
+- **ToolPart** - Tool call with `callID`, `tool`, `state` (pending/running/completed/error)
 
-const TranscriptInput = z.object({
-  events: z.array(TranscriptEventSchema),
-})
+Key insight: `TextPart.metadata` is already a flexible record - clients can optionally include origin info (e.g., `metadata.source`) without any schema changes.
 
-export const RealtimeV2Routes = new Hono()
-  // Initialize a realtime session (creates opencode session if needed)
-  .post(
-    "/:sessionID/init",
-    validator("param", z.object({ sessionID: z.string() })),
-    async (c) => {
-      const { sessionID } = c.req.valid("param")
+## New Endpoints
 
-      // Get or create session
-      let session = await Session.get(sessionID)
-      if (!session) {
-        session = await Session.create({})
-        // Note: This creates a new session, we might want to use the provided ID
-      }
+### 1. Add Transcript
 
-      return c.json({
-        sessionID: session.id,
-        created: true,
-      })
-    },
-  )
+**Endpoint:** `POST /session/:sessionID/transcript`
 
-  // Receive transcript events from client
-  .post(
-    "/:sessionID/transcript",
-    validator("param", z.object({ sessionID: z.string() })),
-    validator("json", TranscriptInput),
-    async (c) => {
-      const { sessionID } = c.req.valid("param")
-      const { events } = c.req.valid("json")
-
-      // Verify session exists
-      const session = await Session.get(sessionID)
-      if (!session) {
-        return c.json({ error: "Session not found" }, 404)
-      }
-
-      // Get or create a message for realtime transcripts
-      // We use a single message per realtime session to hold all parts
-      let messageID = session.metadata?.realtimeMessageID as string | undefined
-
-      if (!messageID) {
-        // Create a new message for realtime content
-        const message = await MessageV2.create({
-          sessionID,
-          role: "user", // Will contain both user and assistant parts
-          parts: [],
-        })
-        messageID = message.id
-
-        // Store reference in session metadata
-        await Session.update(sessionID, {
-          metadata: {
-            ...session.metadata,
-            realtimeMessageID: messageID,
-          },
-        })
-      }
-
-      // Convert events to parts
-      const parts: MessageV2.Part[] = []
-
-      for (const event of events) {
-        if (event.type === "user_transcript" && event.text) {
-          parts.push({
-            id: Identifier.ascending("part"),
-            sessionID,
-            messageID,
-            type: "text",
-            text: event.text,
-            synthetic: true, // Transcribed from audio
-            time: {
-              start: event.timestamp,
-              end: event.timestamp,
-            },
-            metadata: {
-              realtime: true,
-              source: "user_audio",
-              item_id: event.item_id,
-            },
-          })
-        } else if (event.type === "assistant_transcript" && event.text) {
-          parts.push({
-            id: Identifier.ascending("part"),
-            sessionID,
-            messageID,
-            type: "text",
-            text: event.text,
-            time: {
-              start: event.timestamp,
-              end: event.timestamp,
-            },
-            metadata: {
-              realtime: true,
-              source: "assistant_audio",
-              item_id: event.item_id,
-              response_id: event.response_id,
-            },
-          })
-        }
-        // speech_started/stopped events could be stored as RealtimeEventParts
-      }
-
-      // Persist parts
-      for (const part of parts) {
-        await MessageV2.addPart(messageID, part)
-      }
-
-      return c.json({
-        persisted: parts.length,
-      })
-    },
-  )
-
-  // Get transcript for a session
-  .get(
-    "/:sessionID/transcript",
-    validator("param", z.object({ sessionID: z.string() })),
-    async (c) => {
-      const { sessionID } = c.req.valid("param")
-
-      const session = await Session.get(sessionID)
-      if (!session) {
-        return c.json({ error: "Session not found" }, 404)
-      }
-
-      const messageID = session.metadata?.realtimeMessageID as string | undefined
-      if (!messageID) {
-        return c.json({ events: [] })
-      }
-
-      const message = await MessageV2.get(messageID)
-      if (!message) {
-        return c.json({ events: [] })
-      }
-
-      // Convert parts back to transcript events for client
-      const events = message.parts
-        .filter((p) => p.type === "text" && p.metadata?.realtime)
-        .map((p) => ({
-          type: p.metadata?.source === "user_audio" ? "user_transcript" : "assistant_transcript",
-          text: (p as MessageV2.TextPart).text,
-          item_id: p.metadata?.item_id,
-          response_id: p.metadata?.response_id,
-          timestamp: p.time?.start ?? Date.now(),
-        }))
-
-      return c.json({ events })
-    },
-  )
-```
-
-### 2. Register Routes
+Adds user or assistant text to a session without triggering agent execution. This is for storing transcripts from external sources (voice, other clients).
 
 ```typescript
-// In src/server/server.ts, add:
-
-import { RealtimeV2Routes } from "../realtime-v2/server/routes"
-
-// ... in route setup:
-.route("/realtime-v2", RealtimeV2Routes)
-```
-
-## Client Updates
-
-### 1. Add Transcript Sync to Hook
-
-```typescript
-// Update useRealtimeV2.ts
-
-interface UseRealtimeV2Options {
-  apiKey: string
-  model?: string
-  sessionID?: string      // OpenCode session ID
-  serverUrl?: string      // OpenCode server URL
-  enablePersistence?: boolean
+// Request body
+{
+  role: "user" | "assistant",
+  text: string,
+  metadata?: Record<string, any>  // Client-controlled, stored as-is
 }
 
-// Add to the hook:
-const pendingEvents = useRef<TranscriptEvent[]>([])
-const syncInterval = useRef<NodeJS.Timer | null>(null)
-
-const syncTranscripts = useCallback(async () => {
-  if (!options.enablePersistence || !options.sessionID || pendingEvents.current.length === 0) {
-    return
-  }
-
-  const events = [...pendingEvents.current]
-  pendingEvents.current = []
-
-  try {
-    await fetch(`${options.serverUrl}/realtime-v2/${options.sessionID}/transcript`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ events }),
-    })
-  } catch (err) {
-    // Re-queue failed events
-    pendingEvents.current = [...events, ...pendingEvents.current]
-    console.error("[realtime] transcript sync failed:", err)
-  }
-}, [options.enablePersistence, options.sessionID, options.serverUrl])
-
-// In connect(), add event listeners:
-transport.on("conversation.item.input_audio_transcription.completed", (event) => {
-  pendingEvents.current.push({
-    type: "user_transcript",
-    text: event.transcript,
-    item_id: event.item_id,
-    timestamp: Date.now(),
-  })
-})
-
-transport.on("response.output_audio_transcript.done", (event) => {
-  pendingEvents.current.push({
-    type: "assistant_transcript",
-    text: event.transcript,
-    item_id: event.item_id,
-    response_id: event.response_id,
-    timestamp: Date.now(),
-  })
-})
-
-// Start sync interval
-syncInterval.current = setInterval(syncTranscripts, 1000) // Sync every second
+// Response
+{
+  messageID: string,
+  partID: string
+}
 ```
 
-### 2. Load Existing Transcript
+**Implementation approach:**
+- Similar to how `SessionPrompt.prompt()` creates messages (see `session/prompt.ts`)
+- But skip the agent execution loop - just store the message/part
+- Store client-provided `metadata` as-is (client decides what to include, e.g., `source`, `itemId`)
+
+### 2. Execute Tool
+
+**Endpoint:** `POST /session/:sessionID/tool/call`
+
+Executes a tool and returns the result. The client is responsible for sending the result back to the provider.
 
 ```typescript
-// Add to hook:
-const loadTranscript = useCallback(async () => {
-  if (!options.enablePersistence || !options.sessionID) return
+// Request body
+{
+  toolName: string,
+  callId: string,         // Provider's tool call ID
+  arguments: object       // Tool arguments
+}
 
-  try {
-    const res = await fetch(`${options.serverUrl}/realtime-v2/${options.sessionID}/transcript`)
-    const data = await res.json()
-
-    if (data.events) {
-      setMessages(data.events.map((e: any) => ({
-        role: e.type === "user_transcript" ? "user" : "assistant",
-        content: e.text,
-        timestamp: e.timestamp,
-      })))
-    }
-  } catch (err) {
-    console.error("[realtime] failed to load transcript:", err)
-  }
-}, [options.enablePersistence, options.sessionID, options.serverUrl])
-
-// Call on mount or session change
-useEffect(() => {
-  loadTranscript()
-}, [loadTranscript])
+// Response
+{
+  callId: string,
+  result: any,
+  error?: string
+}
 ```
 
-## Data Flow
+**Implementation approach:**
+- Use `ToolRegistry.get()` to find the tool (see `tool/registry.ts`)
+- Execute via the tool's `execute()` method
+- Store a `ToolPart` in the session for history
+- Return result for client to relay to provider
 
-1. User speaks → OpenAI transcribes → `input_audio_transcription.completed` event
-2. Client captures event → Adds to pending queue
-3. Sync interval fires → POST events to server
-4. Server creates MessageV2 parts → Stores in database
-5. Web app queries session → Displays transcript
+### 3. Get Transcript (existing)
+
+The existing `GET /session/:id/message` endpoint already returns all messages with parts. No changes needed - clients can filter by `metadata` as needed.
+
+## Implementation Plan
+
+### Step 1: Add transcript endpoint to session routes
+
+Modify `packages/opencode/src/server/routes/session.ts`:
+- Add `POST /:sessionID/transcript` route
+- Create message with role, add TextPart with metadata
+- No agent execution
+
+### Step 2: Add tool execution endpoint
+
+Modify `packages/opencode/src/server/routes/session.ts` or create new file:
+- Add `POST /:sessionID/tool/call` route
+- Look up tool from registry
+- Execute with provided arguments
+- Store ToolPart for history
+- Return result
+
+### Step 3: Unit tests
+
+Create test file that validates:
+1. Create session
+2. Add user transcript
+3. Add assistant transcript
+4. Execute tool call
+5. Retrieve messages and verify all parts present
 
 ## Success Criteria
 
-- [ ] Server endpoint receives transcript events
-- [ ] Events are stored as MessageV2 parts
-- [ ] Transcript persists across page reloads
-- [ ] Web app displays conversation history
-- [ ] Multiple clients can view same transcript
+- [x] `POST /session/:id/transcript` stores text without agent execution
+- [x] `POST /session/:id/tool/call` executes tool and returns result
+- [x] Transcripts retrievable via existing `GET /session/:id/message`
+- [x] Tool calls stored in session history as ToolParts
+- [x] Unit tests pass for: create session → add transcript → call tool → verify
+
+## Files Changed
+
+| File | Purpose |
+|------|---------|
+| `packages/opencode/src/server/routes/session.ts` | Added `POST /:sessionID/transcript` and `POST /:sessionID/tool/call` endpoints |
+| `packages/opencode/test/server/session-transcript.test.ts` | Unit tests for transcript endpoint (4 tests) |
+| `packages/opencode/test/server/session-tool-call.test.ts` | Unit tests for tool call endpoint (4 tests) |
+| `docs/architecture/message-flow.md` | New documentation for message flow architecture |
+
+## Key Files to Reference
+
+| File | What to look at |
+|------|-----------------|
+| `session/prompt.ts` | How messages are created (`SessionPrompt.prompt`) |
+| `session/message-v2.ts` | Message and Part schemas |
+| `tool/registry.ts` | How tools are looked up and executed |
+| `server/routes/session.ts` | Existing session routes pattern |
+| [Message Flow Architecture](../architecture/message-flow.md) | How `POST /session/:id/message` works end-to-end |
 
 ## Notes
 
-- We batch transcript events to reduce API calls
-- Failed syncs are retried automatically
-- The session's `realtimeMessageID` tracks the message holding all parts
-- No agent execution happens - this is pure storage
+- This phase has **no client-side changes** - purely server endpoints
+- The endpoints are generic - usable by any client doing client-side inference (voice, CLI, web, etc.)
+- Tool execution runs in server context with proper sandboxing
+- Client controls `metadata` content - server stores it as-is without schema changes
 
-## Next Steps
+### Model Resolution & Client-Side Sessions
 
-Phase 3 will enable actual voice input/output on the client side.
+Sessions don't store a model - instead, the model is resolved per-request. See [Message Flow Architecture](../architecture/message-flow.md) for details.
+
+For client-side inference sessions:
+- Create a normal session (no special flags needed)
+- Use `POST /session/:id/transcript` and `POST /session/:id/tool/call` endpoints
+- **Avoid** `POST /session/:id/message` - this triggers server-side inference
+
+If `POST /session/:id/message` is accidentally called on a client-side session, it will resolve a model using the fallback chain (agent → last message → default) and attempt server-side inference. This is currently undocumented behavior - for now, clients should simply not call this endpoint on sessions intended for client-side inference.
+
+## Future Considerations
+
+- Batch transcript endpoint for efficiency
+- WebSocket for real-time transcript streaming
+- Tool execution timeout handling
+- Permission checks for tool execution
