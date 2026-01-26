@@ -6,6 +6,7 @@
       "name": "opencode",
       "dependencies": {
         "@aws-sdk/client-s3": "3.933.0",
+        "@openai/agents": "0.4.3",
         "@opencode-ai/plugin": "workspace:*",
         "@opencode-ai/script": "workspace:*",
         "@opencode-ai/sdk": "workspace:*",
@@ -1188,6 +1189,14 @@
 
     "@one-ini/wasm": ["@one-ini/wasm@0.1.1", "", {}, "sha512-XuySG1E38YScSJoMlqovLru4KTUNSjgVTIjyh7qMX6aNN5HY5Ct5LhRJdxO79JtTzKfzV/bnWpz+zquYrISsvw=="],
 
+    "@openai/agents": ["@openai/agents@0.4.3", "", { "dependencies": { "@openai/agents-core": "0.4.3", "@openai/agents-openai": "0.4.3", "@openai/agents-realtime": "0.4.3", "debug": "^4.4.0", "openai": "^6" }, "peerDependencies": { "zod": "^4.0.0" } }, "sha512-vj1vRkmhex4r+aQ3EjI9s9u4veFx/kT6NsZmj5qEvBTn8tk7HxPjZJR601dIVBISspH+dqh276I9e2thydPc3w=="],
+
+    "@openai/agents-core": ["@openai/agents-core@0.4.3", "", { "dependencies": { "debug": "^4.4.0", "openai": "^6" }, "optionalDependencies": { "@modelcontextprotocol/sdk": "^1.25.2" }, "peerDependencies": { "zod": "^4.0.0" }, "optionalPeers": ["zod"] }, "sha512-2cz7ptgdHp2NzoN9uImBypRmR+e8ExvBXhxdDnNE6Cw0R8LQxd/KfdDupg7BB1inleOKLgDoasBXD7jRZ0iSQA=="],
+
+    "@openai/agents-openai": ["@openai/agents-openai@0.4.3", "", { "dependencies": { "@openai/agents-core": "0.4.3", "debug": "^4.4.0", "openai": "^6" }, "peerDependencies": { "zod": "^4.0.0" } }, "sha512-dBQDr6IJR9+h/7+0Xn0CQhBbVWvn3PE3a56WuwbKr3cYHU9QxUbVrsRprx3ERboww2qy2D9Hk6Cik2q9MHDnZg=="],
+
+    "@openai/agents-realtime": ["@openai/agents-realtime@0.4.3", "", { "dependencies": { "@openai/agents-core": "0.4.3", "@types/ws": "^8.18.1", "debug": "^4.4.0", "ws": "^8.18.1" }, "peerDependencies": { "zod": "^4.0.0" } }, "sha512-hfe69MfEM0KRN/auLzca7UlMl8mcNMhnIQfOb01R0SbFpU1yl332kQEZw3a2o+n9YRCVAmP6QKuJjejsZwqbvg=="],
+
     "@openauthjs/openauth": ["@openauthjs/openauth@0.0.0-20250322224806", "", { "dependencies": { "@standard-schema/spec": "1.0.0-beta.3", "aws4fetch": "1.0.20", "jose": "5.9.6" }, "peerDependencies": { "arctic": "^2.2.2", "hono": "^4.0.0" } }, "sha512-p5IWSRXvABcwocH2dNI0w8c1QJelIOFulwhKk+aLLFfUbs8u1pr7kQbYe8yCSM2+bcLHiwbogpUQc2ovrGwCuw=="],
 
     "@opencode-ai/app": ["@opencode-ai/app@workspace:packages/app"],
@@ -1874,7 +1883,7 @@
 
     "@types/whatwg-mimetype": ["@types/whatwg-mimetype@3.0.2", "", {}, "sha512-c2AKvDT8ToxLIOUlN51gTiHXflsfIFisS4pO7pDPoKouJCESkhZnEy623gwP9laCy5lnLDAw1vAzu2vM2YLOrA=="],
 
-    "@types/ws": ["@types/ws@7.4.7", "", { "dependencies": { "@types/node": "*" } }, "sha512-JQbbmxZTZehdc2iszGKs5oC3NFnjeay7mtAWrdt7qNtAVK0g19muApzAy4bm9byz79xa2ZnO/BOBC2R8RC5Lww=="],
+    "@types/ws": ["@types/ws@8.18.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg=="],
 
     "@types/yargs": ["@types/yargs@17.0.33", "", { "dependencies": { "@types/yargs-parser": "*" } }, "sha512-WpxBCKWPLr4xSsHgz511rFJAM+wS28w2zEO1QDNY5zM/S8ok70NNfztH0xwhqKyaK0OHCbN98LDAZuy1ctxDkA=="],
 
@@ -4206,6 +4215,14 @@
 
     "@octokit/rest/@octokit/plugin-request-log": ["@octokit/plugin-request-log@6.0.0", "", { "peerDependencies": { "@octokit/core": ">=6" } }, "sha512-UkOzeEN3W91/eBq9sPZNQ7sUBvYCqYbrrD8gTbBuGtHEuycE4/awMXcYvx6sVYo7LypPhmQwwpUe4Yyu4QZN5Q=="],
 
+    "@openai/agents/openai": ["openai@6.16.0", "", { "peerDependencies": { "ws": "^8.18.0", "zod": "^3.25 || ^4.0" }, "optionalPeers": ["ws", "zod"], "bin": { "openai": "bin/cli" } }, "sha512-fZ1uBqjFUjXzbGc35fFtYKEOxd20kd9fDpFeqWtsOZWiubY8CZ1NAlXHW3iathaFvqmNtCWMIsosCuyeI7Joxg=="],
+
+    "@openai/agents-core/openai": ["openai@6.16.0", "", { "peerDependencies": { "ws": "^8.18.0", "zod": "^3.25 || ^4.0" }, "optionalPeers": ["ws", "zod"], "bin": { "openai": "bin/cli" } }, "sha512-fZ1uBqjFUjXzbGc35fFtYKEOxd20kd9fDpFeqWtsOZWiubY8CZ1NAlXHW3iathaFvqmNtCWMIsosCuyeI7Joxg=="],
+
+    "@openai/agents-openai/openai": ["openai@6.16.0", "", { "peerDependencies": { "ws": "^8.18.0", "zod": "^3.25 || ^4.0" }, "optionalPeers": ["ws", "zod"], "bin": { "openai": "bin/cli" } }, "sha512-fZ1uBqjFUjXzbGc35fFtYKEOxd20kd9fDpFeqWtsOZWiubY8CZ1NAlXHW3iathaFvqmNtCWMIsosCuyeI7Joxg=="],
+
+    "@openai/agents-realtime/ws": ["ws@8.18.3", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg=="],
+
     "@openauthjs/openauth/@standard-schema/spec": ["@standard-schema/spec@1.0.0-beta.3", "", {}, "sha512-0ifF3BjA1E8SY9C+nUew8RefNOIq0cDlYALPty4rhUm8Rrl6tCM8hBT4bhGhx7I7iXD0uAgt50lgo8dD73ACMw=="],
 
     "@openauthjs/openauth/jose": ["jose@5.9.6", "", {}, "sha512-AMlnetc9+CV9asI19zHmrgS/WYsWUwCn2R7RzlbJWD7F9eWYUTGyBmU9o6PxngtLGOiDGPRu+Uc4fhKzbpteZQ=="],
@@ -4249,6 +4266,8 @@
     "@slack/oauth/@slack/logger": ["@slack/logger@3.0.0", "", { "dependencies": { "@types/node": ">=12.0.0" } }, "sha512-DTuBFbqu4gGfajREEMrkq5jBhcnskinhr4+AnfJEk48zhVeEv3XnUKGIX98B74kxhYsIMfApGGySTn7V3b5yBA=="],
 
     "@slack/socket-mode/@slack/logger": ["@slack/logger@3.0.0", "", { "dependencies": { "@types/node": ">=12.0.0" } }, "sha512-DTuBFbqu4gGfajREEMrkq5jBhcnskinhr4+AnfJEk48zhVeEv3XnUKGIX98B74kxhYsIMfApGGySTn7V3b5yBA=="],
+
+    "@slack/socket-mode/@types/ws": ["@types/ws@7.4.7", "", { "dependencies": { "@types/node": "*" } }, "sha512-JQbbmxZTZehdc2iszGKs5oC3NFnjeay7mtAWrdt7qNtAVK0g19muApzAy4bm9byz79xa2ZnO/BOBC2R8RC5Lww=="],
 
     "@slack/socket-mode/ws": ["ws@7.5.10", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": "^5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-+dbF1tHwZpXcbOJdVOkzLDxZP1ailvSxM6ZweXTegylPny803bFhA+vqBYw4s31NSAk4S2Qz+AKXK9a4wkdjcQ=="],
 

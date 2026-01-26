@@ -58,6 +58,7 @@ import { createOpencodeClient, type Message, type Part } from "@opencode-ai/sdk/
 import { Binary } from "@opencode-ai/util/binary"
 import { showToast } from "@opencode-ai/ui/toast"
 import { base64Encode } from "@opencode-ai/util/encode"
+import { useVoiceMode } from "@/context/voice-mode"
 
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, "application/pdf"]
@@ -132,6 +133,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const command = useCommand()
   const permission = usePermission()
   const language = useLanguage()
+  const voiceMode = useVoiceMode()
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
@@ -2017,6 +2019,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </Button>
                 </Tooltip>
               </Show>
+              <Tooltip placement="top" value="Voice mode">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  class="size-6"
+                  classList={{
+                    "text-12-success": voiceMode.status() === "connected",
+                    "animate-pulse": voiceMode.status() === "connecting",
+                  }}
+                  onClick={() => voiceMode.toggle()}
+                  aria-label="Voice mode"
+                >
+                  <Icon name="microphone" class="size-4.5" />
+                </Button>
+              </Tooltip>
             </div>
             <Tooltip
               placement="top"

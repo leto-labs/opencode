@@ -24,6 +24,7 @@ import { NotificationProvider } from "@/context/notification"
 import { ModelsProvider } from "@/context/models"
 import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { CommandProvider } from "@/context/command"
+import { VoiceModeProvider } from "@/context/voice-mode"
 import { LanguageProvider, useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { HighlightsProvider } from "@/context/highlights"
@@ -110,7 +111,8 @@ export function AppInterface(props: { defaultUrl?: string }) {
       <ServerKey>
         <GlobalSDKProvider>
           <GlobalSyncProvider>
-            <Router
+            <VoiceModeProvider>
+              <Router
               root={(props) => (
                 <SettingsProvider>
                   <PermissionProvider>
@@ -158,7 +160,8 @@ export function AppInterface(props: { defaultUrl?: string }) {
                   )}
                 />
               </Route>
-            </Router>
+              </Router>
+            </VoiceModeProvider>
           </GlobalSyncProvider>
         </GlobalSDKProvider>
       </ServerKey>
