@@ -1,6 +1,6 @@
 # Phase 3: Client-Side Model Integration
 
-**Status: IN PROGRESS**
+**Status: MOSTLY COMPLETE** - Core functionality working, remaining issues documented below
 
 ## Goal
 
@@ -228,6 +228,32 @@ session.on("history_added", async (item: unknown) => {
 - [x] Assistant responses stored via transcript endpoint (captured from `response.output_audio_transcript.done` event)
 - [x] Messages appear in chat UI (both user and assistant messages persist after refresh)
 - [x] Real-time UI updates for assistant messages (fixed: directory-specific SDK client for SSE event routing)
+- [ ] Conversation context available when switching to realtime mid-conversation
+
+## Implementation Summary
+
+### Completed
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| GPT Realtime model in picker | ✅ | Injected as client-side model |
+| Auto-connect on model select | ✅ | Connects when GPT Realtime selected |
+| Text input to realtime agent | ✅ | `voiceMode.sendText()` |
+| User transcript storage | ✅ | Via SDK `session.transcript.add()` |
+| Assistant transcript storage | ✅ | Captured from `response.output_audio_transcript.done` |
+| Speaker mute/unmute | ✅ | `audioElement.muted` |
+| Microphone mute/unmute | ✅ | `transport.mute()` with visual states |
+| Real-time UI updates | ✅ | Fixed with directory-specific SDK client |
+| Optimistic updates | ✅ | Client-generated IDs passed to server |
+| Message persistence | ✅ | Both user and assistant messages survive refresh |
+
+### Remaining Issues
+
+| Issue | Priority | Description |
+|-------|----------|-------------|
+| Conversation context | High | Realtime agent doesn't know prior conversation history |
+| Session cleared on disconnect | Medium | Toggling voice mode off clears realtime session |
+| Session switching | Medium | Need to disconnect/reconnect when switching OpenCode sessions |
 
 ## Files to Modify
 
@@ -268,6 +294,7 @@ When GPT Realtime model is selected:
 - **Session cleared on disconnect**: When toggling voice mode off, the realtime session is cleared. Should preserve session or reconnect gracefully.
 - **Session switching**: Need to handle disconnecting/reconnecting when switching between sessions in the tab bar.
 - ~~**Duplicate user messages**: User messages may appear twice in the UI (optimistic update + SSE event). Need deduplication logic.~~ **FIXED** - see "Duplicate User Messages Fix" below.
+- **Conversation context not available to realtime agent**: When switching to GPT Realtime mid-conversation, the agent doesn't have access to previous messages. See "Conversation Context Recovery" below.
 
 ## Real-Time UI Updates
 
@@ -421,8 +448,76 @@ The SSE reconciliation logic in the sync store uses binary search on message IDs
 
 By passing the same `messageID` used for the optimistic message, the SSE event updates the existing entry instead of creating a duplicate.
 
+## Conversation Context Recovery
+
+### Problem
+
+When switching to GPT Realtime mid-conversation, the realtime agent doesn't have access to previous conversation history from the OpenCode session.
+
+**Example:**
+1. User talks to Claude Opus: "My name is Leo"
+2. Claude Opus responds: "Nice to meet you, Leo!"
+3. User switches to GPT Realtime model
+4. User asks: "What's my name?"
+5. GPT Realtime responds: "I don't know your name yet. Could you tell me?"
+
+This happens because:
+1. Server-side models (Claude, GPT) receive full conversation history via the prompt endpoint
+2. GPT Realtime starts a fresh WebRTC session with no prior context
+3. Transcripts are stored for persistence but not injected into the realtime session
+
+### Solution (Not Yet Implemented)
+
+When connecting to GPT Realtime, load session history and inject it into the realtime session:
+
+```typescript
+// In voice-mode.tsx connect()
+const connect = async () => {
+  // ... existing setup ...
+
+  // Load conversation history from session
+  const messages = await sdk.client.session.messages.list({
+    sessionID: currentSessionID,
+    limit: 50, // Recent history
+  })
+
+  // Format as context for realtime session
+  const conversationHistory = messages.data
+    ?.filter(m => m.info.role === "user" || m.info.role === "assistant")
+    .map(m => ({
+      role: m.info.role,
+      content: m.parts.filter(p => p.type === "text").map(p => p.text).join("\n"),
+    }))
+
+  // Inject into realtime session as system context or conversation items
+  if (conversationHistory?.length) {
+    session.updateSession({
+      instructions: `Previous conversation:\n${conversationHistory.map(m => `${m.role}: ${m.content}`).join("\n")}`,
+    })
+    // Or use conversation.item.create for each message
+  }
+
+  // ... rest of connect logic ...
+}
+```
+
+### Alternative Approaches
+
+1. **System prompt injection**: Summarize conversation history into system instructions
+2. **Conversation items**: Use OpenAI Realtime API's `conversation.item.create` to add historical messages
+3. **Context window**: Only inject most recent N messages to stay within token limits
+4. **Lazy loading**: Inject context only when user asks about prior conversation
+
+### Considerations
+
+- Token limits for realtime session instructions
+- Latency impact of loading history before connecting
+- Whether to include tool calls/results in context
+- Privacy: user may not want all history shared with different provider
+
 ## Future Considerations
 
 - Real-time streaming of transcripts to UI
 - Voice indicator showing when assistant is speaking
 - Option to switch between voice and text input mid-conversation
+- Conversation context injection when switching to realtime model
