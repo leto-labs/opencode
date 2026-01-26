@@ -31,6 +31,7 @@ export type View = LocalFile["view"]
 export type LocalModel = Omit<Model, "provider"> & {
   provider: Provider
   latest?: boolean
+  clientSide?: boolean
 }
 export type ModelKey = { providerID: string; modelID: string }
 
@@ -45,7 +46,16 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const providers = useProviders()
     const language = useLanguage()
 
+    // Client-side model ID for GPT Realtime
+    const CLIENT_SIDE_MODEL_ID = "gpt-realtime"
+    const CLIENT_SIDE_PROVIDER_ID = "openai-realtime"
+
     function isModelValid(model: ModelKey) {
+      // Client-side models are valid when OpenAI is connected (shares API key)
+      if (model.providerID === CLIENT_SIDE_PROVIDER_ID && model.modelID === CLIENT_SIDE_MODEL_ID) {
+        return providers.connected().some((p) => p.id === "openai")
+      }
+
       const provider = providers.all().find((x) => x.id === model.providerID)
       return (
         !!provider?.models[model.modelID] &&
@@ -172,13 +182,59 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return map
       })
 
-      const list = createMemo(() =>
-        available().map((m) => ({
+      // Client-side model for GPT Realtime (shown when OpenAI is connected)
+      const clientSideModels = createMemo((): LocalModel[] => {
+        const openaiConnected = providers.connected().some((p) => p.id === "openai")
+        if (!openaiConnected) return []
+
+        return [
+          {
+            id: CLIENT_SIDE_MODEL_ID,
+            providerID: CLIENT_SIDE_PROVIDER_ID,
+            name: "GPT Realtime",
+            family: "gpt-realtime",
+            api: {
+              id: "openai-realtime",
+              url: "https://api.openai.com/v1/realtime",
+              npm: "@openai/agents",
+            },
+            capabilities: {
+              temperature: false,
+              reasoning: false,
+              attachment: false,
+              toolcall: true,
+              input: { audio: true, text: true, image: false, video: false, pdf: false },
+              output: { audio: true, text: true, image: false, video: false, pdf: false },
+              interleaved: false,
+            },
+            limit: { context: 128000, output: 4096 },
+            cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+            status: "beta" as const,
+            options: {},
+            headers: {},
+            release_date: "2024-10-01",
+            provider: {
+              id: CLIENT_SIDE_PROVIDER_ID,
+              name: "OpenAI Realtime",
+              source: "config" as const,
+              env: [],
+              options: {},
+              models: {},
+            },
+            clientSide: true,
+          },
+        ]
+      })
+
+      const list = createMemo(() => [
+        ...available().map((m) => ({
           ...m,
           name: m.name.replace("(latest)", "").trim(),
           latest: m.name.includes("(latest)"),
+          clientSide: false,
         })),
-      )
+        ...clientSideModels(),
+      ])
 
       const find = (key: ModelKey) => list().find((m) => m.id === key?.modelID && m.provider.id === key.providerID)
 
@@ -276,6 +332,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           })
         },
         visible(model: ModelKey) {
+          // Client-side models are always visible when available
+          if (model.providerID === CLIENT_SIDE_PROVIDER_ID) return true
+
           const key = `${model.providerID}:${model.modelID}`
           const visibility = userVisibilityMap().get(key)
           if (visibility === "hide") return false
