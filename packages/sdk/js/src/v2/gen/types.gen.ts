@@ -1999,6 +1999,54 @@ export type SubtaskPartInput = {
   command?: string
 }
 
+export type TranscriptTextPartInput = {
+  id?: string
+  type: "text"
+  text: string
+  synthetic?: boolean
+  ignored?: boolean
+  time?: {
+    start: number
+    end?: number
+  }
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type TranscriptFilePartInput = {
+  id?: string
+  type: "file"
+  mime: string
+  filename?: string
+  url: string
+  source?: FilePartSource
+}
+
+export type TranscriptAgentPartInput = {
+  id?: string
+  type: "agent"
+  name: string
+  source?: {
+    value: string
+    start: number
+    end: number
+  }
+}
+
+export type TranscriptSubtaskPartInput = {
+  id?: string
+  type: "subtask"
+  prompt: string
+  description: string
+  agent: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  command?: string
+}
+
 export type ProviderAuthMethod = {
   type: "oauth" | "api"
   label: string
@@ -2084,6 +2132,10 @@ export type McpStatus =
   | McpStatusFailed
   | McpStatusNeedsAuth
   | McpStatusNeedsClientRegistration
+
+export type RealtimeSessionToken = {
+  value: string
+}
 
 export type Path = {
   home: string
@@ -3690,6 +3742,102 @@ export type PermissionRespondResponses = {
 
 export type PermissionRespondResponse = PermissionRespondResponses[keyof PermissionRespondResponses]
 
+export type SessionTranscriptAddData = {
+  body?: {
+    messageID?: string
+    role: "user" | "assistant"
+    model?: {
+      providerID: string
+      modelID: string
+    }
+    agent?: string
+    parts: Array<
+      TranscriptTextPartInput | TranscriptFilePartInput | TranscriptAgentPartInput | TranscriptSubtaskPartInput
+    >
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/transcript"
+}
+
+export type SessionTranscriptAddErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionTranscriptAddError = SessionTranscriptAddErrors[keyof SessionTranscriptAddErrors]
+
+export type SessionTranscriptAddResponses = {
+  /**
+   * Transcript added
+   */
+  200: {
+    info: Message
+    parts: Array<Part>
+  }
+}
+
+export type SessionTranscriptAddResponse = SessionTranscriptAddResponses[keyof SessionTranscriptAddResponses]
+
+export type SessionToolCallData = {
+  body?: {
+    toolName: string
+    callId: string
+    arguments: {
+      [key: string]: unknown
+    }
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/tool/call"
+}
+
+export type SessionToolCallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionToolCallError = SessionToolCallErrors[keyof SessionToolCallErrors]
+
+export type SessionToolCallResponses = {
+  /**
+   * Tool executed
+   */
+  200: {
+    callId: string
+    result: unknown
+    error?: string
+  }
+}
+
+export type SessionToolCallResponse = SessionToolCallResponses[keyof SessionToolCallResponses]
+
 export type PermissionReplyData = {
   body?: {
     reply: "once" | "always" | "reject"
@@ -4672,6 +4820,33 @@ export type TuiControlResponseResponses = {
 }
 
 export type TuiControlResponseResponse = TuiControlResponseResponses[keyof TuiControlResponseResponses]
+
+export type RealtimeSessionData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/realtime/session"
+}
+
+export type RealtimeSessionErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type RealtimeSessionError = RealtimeSessionErrors[keyof RealtimeSessionErrors]
+
+export type RealtimeSessionResponses = {
+  /**
+   * Ephemeral session token
+   */
+  200: RealtimeSessionToken
+}
+
+export type RealtimeSessionResponse = RealtimeSessionResponses[keyof RealtimeSessionResponses]
 
 export type InstanceDisposeData = {
   body?: never

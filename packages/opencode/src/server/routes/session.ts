@@ -7,6 +7,7 @@ import { MessageV2 } from "../../session/message-v2"
 import { SessionPrompt } from "../../session/prompt"
 import { SessionCompaction } from "../../session/compaction"
 import { SessionRevert } from "../../session/revert"
+import { SessionTranscript } from "../../session/transcript"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "../../session/todo"
@@ -955,12 +956,7 @@ export const SessionRoutes = lazy(() =>
             description: "Transcript added",
             content: {
               "application/json": {
-                schema: resolver(
-                  z.object({
-                    messageID: z.string(),
-                    partID: z.string(),
-                  }),
-                ),
+                schema: resolver(SessionTranscript.AddOutput),
               },
             },
           },
@@ -973,78 +969,20 @@ export const SessionRoutes = lazy(() =>
           sessionID: z.string().meta({ description: "Session ID" }),
         }),
       ),
-      validator(
-        "json",
-        z.object({
-          role: z.enum(["user", "assistant"]),
-          text: z.string(),
-          metadata: z.record(z.string(), z.any()).optional(),
-        }),
-      ),
+      validator("json", SessionTranscript.AddInput.omit({ sessionID: true })),
       async (c) => {
         const { sessionID } = c.req.valid("param")
-        const { role, text, metadata } = c.req.valid("json")
+        const body = c.req.valid("json")
 
-        // Verify session exists
-        const session = await Session.get(sessionID)
-        if (!session) {
-          return c.json({ error: "Session not found" }, { status: 404 })
-        }
-
-        const now = Date.now()
-        const messageID = Identifier.ascending("message")
-
-        // Create message based on role
-        if (role === "user") {
-          const userMessage: MessageV2.User = {
-            id: messageID,
-            role: "user",
-            sessionID,
-            time: { created: now },
-            agent: "client",
-            model: { providerID: "client", modelID: "client" },
+        try {
+          const result = await SessionTranscript.add({ ...body, sessionID })
+          return c.json(result)
+        } catch (err) {
+          if (err instanceof Error && err.message.includes("not found")) {
+            return c.json({ error: err.message }, { status: 404 })
           }
-          await Session.updateMessage(userMessage)
-        } else {
-          // For assistant messages, find the last user message to use as parentID
-          const messages = await Session.messages({ sessionID, limit: 10 })
-          const lastUserMsg = messages.reverse().find((m) => m.info.role === "user")
-          const parentID = lastUserMsg?.info.id ?? messageID
-
-          const assistantMessage: MessageV2.Assistant = {
-            id: messageID,
-            role: "assistant",
-            sessionID,
-            time: { created: now },
-            parentID,
-            modelID: "client",
-            providerID: "client",
-            mode: "client",
-            agent: "client",
-            path: { cwd: Instance.directory, root: Instance.worktree },
-            cost: 0,
-            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-          }
-          await Session.updateMessage(assistantMessage)
+          throw err
         }
-
-        // Create text part
-        const partID = Identifier.ascending("part")
-        const part: MessageV2.TextPart = {
-          id: partID,
-          sessionID,
-          messageID,
-          type: "text",
-          text,
-          time: { start: now, end: now },
-          metadata,
-        }
-        await Session.updatePart(part)
-
-        // Touch session to update timestamp
-        await Session.touch(sessionID)
-
-        return c.json({ messageID, partID })
       },
     )
     .post(
