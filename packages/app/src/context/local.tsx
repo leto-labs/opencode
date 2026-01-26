@@ -9,6 +9,44 @@ import { useModels } from "@/context/models"
 
 export type ModelKey = { providerID: string; modelID: string }
 
+const GPT_REALTIME_MODEL = {
+  id: "gpt-realtime",
+  providerID: "openai-realtime",
+  name: "GPT Realtime",
+  family: "gpt-realtime",
+  api: {
+    id: "openai-realtime",
+    url: "https://api.openai.com/v1/realtime",
+    npm: "@openai/agents",
+  },
+  capabilities: {
+    temperature: false,
+    reasoning: false,
+    attachment: false,
+    toolcall: true,
+    input: { audio: true, text: true, image: false, video: false, pdf: false },
+    output: { audio: true, text: true, image: false, video: false, pdf: false },
+    interleaved: false,
+  },
+  limit: { context: 128000, output: 4096 },
+  cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+  status: "beta" as const,
+  options: {},
+  headers: {},
+  release_date: "2024-10-01",
+  provider: {
+    id: "openai",
+    name: "OpenAI",
+    source: "config" as const,
+    env: [],
+    options: {},
+    models: {},
+  },
+  clientSide: true,
+  latest: false,
+  variants: undefined,
+}
+
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
   init: () => {
@@ -16,7 +54,16 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const sync = useSync()
     const providers = useProviders()
 
+    // Client-side model ID for GPT Realtime
+    const CLIENT_SIDE_MODEL_ID = "gpt-realtime"
+    const CLIENT_SIDE_PROVIDER_ID = "openai-realtime"
+
     function isModelValid(model: ModelKey) {
+      // Client-side models are valid when OpenAI is connected (shares API key)
+      if (model.providerID === CLIENT_SIDE_PROVIDER_ID && model.modelID === CLIENT_SIDE_MODEL_ID) {
+        return providers.connected().some((p) => p.id === "openai")
+      }
+
       const provider = providers.all().find((x) => x.id === model.providerID)
       return (
         !!provider?.models[model.modelID] &&
@@ -85,6 +132,25 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const model = (() => {
       const models = useModels()
 
+      // Check if OpenAI is connected (needed for client-side realtime model)
+      const isOpenAIConnected = createMemo(() => providers.connected().some((p) => p.id === "openai"))
+
+      // Wrap models.list to include client-side models
+      const listWithClientSide = createMemo(() => {
+        const baseList = models.list()
+        if (!isOpenAIConnected()) return baseList
+        // Add GPT Realtime model when OpenAI is connected
+        return [...baseList, GPT_REALTIME_MODEL]
+      })
+
+      // Wrap models.find to handle client-side models
+      const findWithClientSide = (key: ModelKey) => {
+        if (key.providerID === CLIENT_SIDE_PROVIDER_ID && key.modelID === CLIENT_SIDE_MODEL_ID) {
+          return isOpenAIConnected() ? GPT_REALTIME_MODEL : undefined
+        }
+        return models.find(key)
+      }
+
       const [ephemeral, setEphemeral] = createStore<{
         model: Record<string, ModelKey | undefined>
       }>({
@@ -134,10 +200,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           fallbackModel,
         )
         if (!key) return undefined
-        return models.find(key)
+        return findWithClientSide(key)
       })
 
-      const recent = createMemo(() => models.recent.list().map(models.find).filter(Boolean))
+      const recent = createMemo(() => models.recent.list().map(findWithClientSide).filter(Boolean))
 
       const cycle = (direction: 1 | -1) => {
         const recentList = recent()
@@ -166,7 +232,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         ready: models.ready,
         current,
         recent,
-        list: models.list,
+        list: listWithClientSide,
         cycle,
         set(model: ModelKey | undefined, options?: { recent?: boolean }) {
           batch(() => {
