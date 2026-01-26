@@ -23,6 +23,7 @@ import { CommentsProvider } from "@/context/comments"
 import { NotificationProvider } from "@/context/notification"
 import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { CommandProvider } from "@/context/command"
+import { VoiceModeProvider } from "@/context/voice-mode"
 import { LanguageProvider, useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { Logo } from "@opencode-ai/ui/logo"
@@ -99,7 +100,8 @@ export function AppInterface(props: { defaultUrl?: string }) {
       <ServerKey>
         <GlobalSDKProvider>
           <GlobalSyncProvider>
-            <Router
+            <VoiceModeProvider>
+              <Router
               root={(props) => (
                 <SettingsProvider>
                   <PermissionProvider>
@@ -143,7 +145,8 @@ export function AppInterface(props: { defaultUrl?: string }) {
                   )}
                 />
               </Route>
-            </Router>
+              </Router>
+            </VoiceModeProvider>
           </GlobalSyncProvider>
         </GlobalSDKProvider>
       </ServerKey>

@@ -94,6 +94,20 @@ transport.sendMessage("Hello!")
 transport.sendAudio(pcm16AudioBuffer)
 ```
 
+## Development
+
+Start the dev servers in two separate terminals:
+
+```bash
+# Terminal 1: Start the opencode server (from packages/opencode)
+cd packages/opencode
+bun run --conditions=browser ./src/index.ts serve --port 4096
+
+# Terminal 2: Start the dev UI (from packages/app)
+cd packages/app
+bun dev
+```
+
 ## File Structure
 
 ```

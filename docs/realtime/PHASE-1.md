@@ -1,299 +1,155 @@
-# Phase 1: Basic WebRTC Text Integration
+# Phase 1: Voice Mode Button
+
+**Status: COMPLETE**
 
 ## Goal
 
-Create a minimal proof-of-concept where the web client connects directly to OpenAI Realtime API using the `@openai/agents-realtime` SDK. For simplicity:
-- Use client-side API key (insecure, development only)
-- Text input only (send text, receive text transcripts)
-- Ignore audio data entirely
-- No server integration yet
+Add a microphone button that connects/disconnects to OpenAI Realtime API via WebRTC.
 
-## Architecture
+## Tasks
 
-```
-┌─────────────────┐        WebSocket         ┌─────────────────┐
-│   Web Client    │◄────────────────────────►│  OpenAI Realtime│
-│                 │                           │       API       │
-│  - API Key      │                           │                 │
-│  - SDK Instance │                           │  - gpt-realtime │
-│  - Text I/O     │                           │                 │
-└─────────────────┘                           └─────────────────┘
-```
-
-## Implementation Steps
-
-### 1. Install SDK in Web Package
-
-The `@openai/agents-realtime` package is already a dependency in the main package.
-For the web client, we need to ensure it's available:
+### 1. Add Package
 
 ```bash
-cd packages/web
-pnpm add @openai/agents-realtime
+cd packages/app && bun add @openai/agents
 ```
 
-### 2. Create Client-Side Realtime Hook
+Note: Import from `@openai/agents/realtime`
 
+### 2. Create VoiceModeProvider
+
+**File:** `packages/app/src/context/voice-mode.tsx`
+
+- `status: "disconnected" | "connecting" | "connected" | "error"`
+- `toggle()` - connect or disconnect
+- Uses `RealtimeSession` + `RealtimeAgent` + `OpenAIRealtimeWebRTC`
+- Fetches ephemeral key from server `/realtime/session` endpoint (see Task 5)
+- Hidden `<audio>` element for playback
+- Console.log all events
+
+**Client-side flow:**
 ```typescript
-// packages/web/src/hooks/useRealtimeV2.ts
+// 1. Fetch ephemeral key from server
+const response = await fetch("/realtime/session");
+const data = await response.json();
+const ephemeralKey = data.value;
 
-import { useState, useCallback, useRef } from "react"
-import { OpenAIRealtimeWebSocket } from "@openai/agents-realtime"
-
-interface UseRealtimeV2Options {
-  apiKey: string
-  model?: string
-}
-
-interface Message {
-  role: "user" | "assistant"
-  content: string
-  timestamp: number
-}
-
-export function useRealtimeV2(options: UseRealtimeV2Options) {
-  const { apiKey, model = "gpt-4o-realtime-preview" } = options
-
-  const [status, setStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected")
-  const [messages, setMessages] = useState<Message[]>([])
-  const [error, setError] = useState<Error | null>(null)
-
-  const transportRef = useRef<OpenAIRealtimeWebSocket | null>(null)
-
-  const connect = useCallback(async () => {
-    if (transportRef.current) return
-
-    setStatus("connecting")
-    setError(null)
-
-    try {
-      const transport = new OpenAIRealtimeWebSocket({
-        apiKey,
-        model,
-        useInsecureApiKey: true, // Required for client-side API key
-      })
-
-      // Listen for all events
-      transport.on("*", (event) => {
-        console.log("[realtime] event:", event.type, event)
-      })
-
-      // Handle connection state
-      transport.on("connection_change", (state) => {
-        console.log("[realtime] connection:", state)
-        if (state === "connected") setStatus("connected")
-        else if (state === "disconnected") setStatus("disconnected")
-      })
-
-      // Handle text transcript from assistant
-      transport.on("response.output_text.done", (event) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: event.text,
-            timestamp: Date.now(),
-          },
-        ])
-      })
-
-      // Handle audio transcript from assistant (fallback)
-      transport.on("response.output_audio_transcript.done", (event) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: event.transcript,
-            timestamp: Date.now(),
-          },
-        ])
-      })
-
-      // Handle errors
-      transport.on("error", (err) => {
-        console.error("[realtime] error:", err)
-        setError(new Error(String(err.error)))
-      })
-
-      // Connect with text-only modalities
-      await transport.connect({
-        model,
-        initialSessionConfig: {
-          modalities: ["text"], // Text only, no audio
-          instructions: "You are a helpful assistant.",
-        },
-      })
-
-      transportRef.current = transport
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)))
-      setStatus("disconnected")
-    }
-  }, [apiKey, model])
-
-  const disconnect = useCallback(() => {
-    if (transportRef.current) {
-      transportRef.current.close()
-      transportRef.current = null
-      setStatus("disconnected")
-    }
-  }, [])
-
-  const sendMessage = useCallback((text: string) => {
-    if (!transportRef.current || status !== "connected") return
-
-    // Add to local messages
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "user",
-        content: text,
-        timestamp: Date.now(),
-      },
-    ])
-
-    // Send to OpenAI
-    transportRef.current.sendMessage(text, {})
-  }, [status])
-
-  return {
-    status,
-    messages,
-    error,
-    connect,
-    disconnect,
-    sendMessage,
-  }
-}
+// 2. Connect with ephemeral key
+await session.connect({ apiKey: ephemeralKey });
 ```
 
-### 3. Create Test Component
+### 3. Add Provider to App
 
+**File:** `packages/app/src/app.tsx`
+
+### 4. Add Microphone Button
+
+**File:** `packages/app/src/components/prompt-input.tsx`
+
+- Location: next to attach file button
+- Click calls `voiceMode.toggle()`
+- Visual state reflects connection status
+
+### 5. Add /realtime/session Server Route
+
+**File:** `packages/opencode/src/server/server.ts`
+
+**Server-side flow:**
 ```typescript
-// packages/web/src/components/RealtimeV2Test.tsx
+// 1. Get OpenAI API key from provider config
+const provider = await Provider.getProvider("openai");
+if (!provider?.key) {
+  return c.json({ error: "OpenAI provider not configured" }, { status: 400 });
+}
 
-import { useState } from "react"
-import { useRealtimeV2 } from "../hooks/useRealtimeV2"
+// 2. Request ephemeral client secret from OpenAI
+const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${provider.key}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    session: {
+      type: "realtime",
+      model: "gpt-realtime",
+    },
+  }),
+});
 
-export function RealtimeV2Test() {
-  const [apiKey, setApiKey] = useState("")
-  const [input, setInput] = useState("")
+// 3. Return the response (contains value)
+const data = await response.json();
+return c.json(data);
+```
 
-  const { status, messages, error, connect, disconnect, sendMessage } = useRealtimeV2({
-    apiKey,
-  })
-
-  const handleSend = () => {
-    if (input.trim()) {
-      sendMessage(input)
-      setInput("")
-    }
-  }
-
-  return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <h1 className="text-xl font-bold mb-4">Realtime V2 Test</h1>
-
-      {/* API Key Input */}
-      <div className="mb-4">
-        <input
-          type="password"
-          placeholder="OpenAI API Key"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          className="w-full p-2 border rounded"
-          disabled={status !== "disconnected"}
-        />
-      </div>
-
-      {/* Connection Controls */}
-      <div className="mb-4 flex gap-2">
-        <button
-          onClick={connect}
-          disabled={status !== "disconnected" || !apiKey}
-          className="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50"
-        >
-          Connect
-        </button>
-        <button
-          onClick={disconnect}
-          disabled={status === "disconnected"}
-          className="px-4 py-2 bg-red-500 text-white rounded disabled:opacity-50"
-        >
-          Disconnect
-        </button>
-        <span className="self-center">Status: {status}</span>
-      </div>
-
-      {/* Error Display */}
-      {error && (
-        <div className="mb-4 p-2 bg-red-100 text-red-700 rounded">
-          {error.message}
-        </div>
-      )}
-
-      {/* Messages */}
-      <div className="mb-4 h-64 overflow-y-auto border rounded p-2">
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`mb-2 p-2 rounded ${
-              msg.role === "user" ? "bg-blue-100 ml-8" : "bg-gray-100 mr-8"
-            }`}
-          >
-            <div className="text-xs text-gray-500">{msg.role}</div>
-            <div>{msg.content}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Input */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          placeholder="Type a message..."
-          className="flex-1 p-2 border rounded"
-          disabled={status !== "connected"}
-        />
-        <button
-          onClick={handleSend}
-          disabled={status !== "connected" || !input.trim()}
-          className="px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50"
-        >
-          Send
-        </button>
-      </div>
-    </div>
-  )
+**Response format:**
+```json
+{
+  "value": "ek_..."
 }
 ```
 
-## Testing
-
-1. Start the web dev server
-2. Navigate to the test component
-3. Enter your OpenAI API key
-4. Click Connect
-5. Type messages and verify responses
+Reference: https://github.com/openai/openai-agents-js/issues/463
 
 ## Success Criteria
 
-- [ ] Client connects directly to OpenAI Realtime API
-- [ ] Can send text messages
-- [ ] Receives text responses from the model
-- [ ] Connection state is properly tracked
-- [ ] Errors are handled gracefully
+- [x] Button connects/disconnects WebRTC session
+- [x] Server provides ephemeral keys via `/realtime/session` endpoint
+- [x] OpenAI API key loaded from provider config (not exposed to client)
+- [x] Can speak and hear assistant response
+- [x] Events logged to console
 
-## Notes
+## Challenges & Solutions
 
-- This phase uses client-side API key which is **insecure**
-- Phase 4 will introduce ephemeral keys for production use
-- We're ignoring audio entirely - that comes in Phase 3
-- No server integration yet - that's Phase 2
+### 1. API Endpoint Changed
 
-## Next Steps
+**Problem:** Initial implementation used the deprecated `/v1/realtime/sessions` endpoint which returned a 400 error from the WebRTC `/v1/realtime/calls` endpoint.
 
-Once this works, proceed to Phase 2 to add transcript persistence to the OpenCode server.
+**Error:**
+```
+OperationError: Failed to execute 'setRemoteDescription' on 'RTCPeerConnection':
+Failed to parse SessionDescription. { Expect line: v=
+```
+
+**Solution:** OpenAI updated their API. The new endpoint is `/v1/realtime/client_secrets` with a different request body format:
+
+| Old Format | New Format |
+|------------|------------|
+| `POST /v1/realtime/sessions` | `POST /v1/realtime/client_secrets` |
+| `{ model: "gpt-4o-realtime-preview-2025-06-03" }` | `{ session: { type: "realtime", model: "gpt-realtime" } }` |
+| Response: `client_secret.value` | Response: `value` (top-level) |
+
+**Reference:** [GitHub Issue #463](https://github.com/openai/openai-agents-js/issues/463)
+
+### 2. Route Naming Conflict
+
+**Problem:** Initially named the endpoint `/session` which conflicted with existing `SessionRoutes()` that returns chat session list.
+
+**Solution:** Renamed to `/realtime/session` to avoid conflict.
+
+### 3. Environment Variable Exposure
+
+**Problem:** Early prototype used `VITE_OPENAI_API_KEY` directly in client code, which exposes the API key.
+
+**Solution:** Server-side endpoint fetches ephemeral key using `Provider.getProvider("openai")` to load the key from opencode's provider config. Client only receives short-lived ephemeral tokens.
+
+## Files Changed
+
+| File | Purpose |
+|------|---------|
+| `packages/opencode/src/server/server.ts` | Added `GET /realtime/session` endpoint that fetches ephemeral keys from OpenAI using the configured provider API key |
+| `packages/app/src/context/voice-mode.tsx` | New VoiceModeProvider context managing WebRTC connection state, audio playback, and session lifecycle |
+| `packages/app/src/app.tsx` | Wrapped app with VoiceModeProvider |
+| `packages/app/src/components/prompt-input.tsx` | Added microphone button that calls `voiceMode.toggle()` |
+| `packages/ui/src/components/icon.tsx` | Added `IconMicrophone` component |
+| `docs/realtime/README.md` | Added Development section with dev server commands |
+
+## Future Plans
+
+Robustness improvements for later phases:
+
+- **Error handling**: Better error messages and recovery flows when connection fails
+- **Graceful disconnect**: Clean up resources properly on disconnect, handle unexpected disconnections
+- **Session regeneration**: Automatically regenerate ephemeral key on expiry (2-hour TTL)
+- **Session resumption**: Store the realtime session as part of the opencode session to enable reconnection
+- **Connection state UI**: Visual feedback for connecting/connected/error states on the microphone button
