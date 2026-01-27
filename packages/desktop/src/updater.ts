@@ -39,7 +39,12 @@ export async function runUpdater({ alertOnFail }: { alertOnFail: boolean }) {
   if (!shouldUpdate) return
 
   try {
-    if (ostype() === "windows") await invoke("kill_sidecar")
+    // Kill sidecar on Windows before update
+    try {
+      if (ostype() === "windows") await invoke("kill_sidecar")
+    } catch {
+      // ostype() may fail on mobile, that's ok
+    }
     await update.install()
   } catch {
     await message(t("desktop.updater.installFailed.message"), { title: t("desktop.updater.installFailed.title") })

@@ -8,7 +8,13 @@ import { installCli } from "./cli"
 import { initI18n, t } from "./i18n"
 
 export async function createMenu() {
-  if (ostype() !== "macos") return
+  // Check if we're on macOS - skip on mobile or if Tauri not ready
+  try {
+    if (ostype() !== "macos") return
+  } catch {
+    // ostype() fails on mobile or before Tauri is ready
+    return
+  }
 
   await initI18n()
 

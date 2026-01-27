@@ -5,3 +5,22 @@ button#decorum-tb-close,
 div[data-tauri-decorum-tb] {
   height: calc(var(--spacing) * 10) !important;
 }
+
+/* iOS touch event fixes */
+@supports (-webkit-touch-callout: none) {
+  /* Fix for iOS button/touch interaction issues */
+  * {
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  }
+
+  button, a, [role="button"], [onclick] {
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Ensure scrolling works on iOS */
+  body, #root {
+    -webkit-overflow-scrolling: touch;
+  }
+}
