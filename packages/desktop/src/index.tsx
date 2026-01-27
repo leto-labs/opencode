@@ -22,6 +22,13 @@ import { initI18n, t } from "./i18n"
 import pkg from "../package.json"
 import "./styles.css"
 
+declare global {
+  interface Window {
+    __TAURI_INTERNALS__?: any
+    __TAURI_IPC__?: any
+  }
+}
+
 const root = document.getElementById("root")
 if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   throw new Error(t("error.dev.rootNotFound"))
