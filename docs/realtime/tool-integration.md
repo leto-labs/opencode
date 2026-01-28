@@ -12,7 +12,7 @@ Tools in realtime mode work similarly to text mode, with one key difference: **e
 │     call        │                      │                 │
 └────────┬────────┘                      └─────────────────┘
          │
-         │ 2. POST /tool-call
+         │ 2. POST /session/:id/tool/call
          ▼
 ┌─────────────────┐
 │  OpenCode Server│
@@ -59,35 +59,27 @@ Audio output:                                |▓▓▓▓▓▓▓▓▓▓▓�
 ## Client-Side Handling
 
 ```typescript
-// In useRealtimeV2 hook
-transport.on("function_call", async (call) => {
+// In voice-mode.tsx or useRealtimeConnection hook
+session.on("function_call", async (call) => {
   console.log("Tool call:", call.name, call.arguments)
 
-  // Forward to server
-  const response = await fetch(
-    `${serverUrl}/realtime-v2/${sessionID}/tool-call`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        call_id: call.callId,
-        name: call.name,
-        arguments: call.arguments,
-      }),
-    }
-  )
-
-  const result = await response.json()
+  // Forward to server via SDK
+  const result = await sdk.client.session.tool.call({
+    sessionID,
+    toolName: call.name,
+    callId: call.callId,
+    arguments: JSON.parse(call.arguments),
+  })
 
   // Send result back to OpenAI
-  transport.sendFunctionCallOutput(call, result.output)
+  session.sendFunctionCallOutput(call, result.data?.output ?? "")
 })
 ```
 
 ## Server-Side Execution
 
 ```typescript
-// POST /realtime-v2/:sessionID/tool-call
+// POST /session/:sessionID/tool/call
 async function handleToolCall(sessionID: string, input: ToolCallInput) {
   const { call_id, name, arguments: argsJson } = input
 
@@ -141,7 +133,7 @@ Tools are defined in OpenAI's function format:
 }
 ```
 
-The server provides available tools via `GET /realtime-v2/:sessionID/tools`.
+The server will provide available tools via `GET /session/:sessionID/tools` (Phase 4).
 
 ## Interruption Handling
 
