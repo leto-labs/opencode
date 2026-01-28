@@ -56,7 +56,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     // Client-side model ID for GPT Realtime
     const CLIENT_SIDE_MODEL_ID = "gpt-realtime"
-    const CLIENT_SIDE_PROVIDER_ID = "openai-realtime"
+    const CLIENT_SIDE_PROVIDER_ID = "openai"
 
     function isModelValid(model: ModelKey) {
       // Client-side models are valid when OpenAI is connected (shares API key)

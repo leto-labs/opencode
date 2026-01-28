@@ -162,68 +162,6 @@ export namespace Server {
         .route("/", FileRoutes())
         .route("/mcp", McpRoutes())
         .route("/tui", TuiRoutes())
-        .get(
-          "/realtime/session",
-          describeRoute({
-            summary: "Get realtime session token",
-            description:
-              "Get an ephemeral OpenAI Realtime API session token for WebRTC connection. Requires OpenAI provider to be configured.",
-            operationId: "realtime.session",
-            responses: {
-              200: {
-                description: "Ephemeral session token",
-                content: {
-                  "application/json": {
-                    schema: resolver(
-                      z
-                        .object({
-                          value: z.string(),
-                        })
-                        .meta({
-                          ref: "RealtimeSessionToken",
-                        }),
-                    ),
-                  },
-                },
-              },
-              ...errors(400, 500),
-            },
-          }),
-          async (c) => {
-            const provider = await Provider.getProvider("openai")
-            if (!provider?.key) {
-              return c.json({ error: "OpenAI provider not configured" }, { status: 400 })
-            }
-
-            try {
-              const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${provider.key}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  session: {
-                    type: "realtime",
-                    model: "gpt-realtime",
-                  },
-                }),
-              })
-
-              if (!response.ok) {
-                const error = await response.text()
-                log.error("OpenAI realtime session error", { status: response.status, error })
-                return c.json({ error: "Failed to create realtime session" }, { status: 500 })
-              }
-
-              const data = await response.json()
-              return c.json(data)
-            } catch (err) {
-              log.error("OpenAI realtime session error", { error: err })
-              return c.json({ error: "Failed to create realtime session" }, { status: 500 })
-            }
-          },
-        )
         .post(
           "/instance/dispose",
           describeRoute({

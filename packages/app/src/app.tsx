@@ -111,8 +111,7 @@ export function AppInterface(props: { defaultUrl?: string }) {
       <ServerKey>
         <GlobalSDKProvider>
           <GlobalSyncProvider>
-            <VoiceModeProvider>
-              <Router
+            <Router
               root={(props) => (
                 <SettingsProvider>
                   <PermissionProvider>
@@ -149,9 +148,11 @@ export function AppInterface(props: { defaultUrl?: string }) {
                         <FileProvider>
                           <PromptProvider>
                             <CommentsProvider>
-                              <Suspense fallback={<Loading />}>
-                                <Session />
-                              </Suspense>
+                              <VoiceModeProvider sessionID={p.params.id}>
+                                <Suspense fallback={<Loading />}>
+                                  <Session />
+                                </Suspense>
+                              </VoiceModeProvider>
                             </CommentsProvider>
                           </PromptProvider>
                         </FileProvider>
@@ -161,7 +162,6 @@ export function AppInterface(props: { defaultUrl?: string }) {
                 />
               </Route>
               </Router>
-            </VoiceModeProvider>
           </GlobalSyncProvider>
         </GlobalSDKProvider>
       </ServerKey>
