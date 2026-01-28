@@ -91,12 +91,14 @@ import type {
   QuestionRejectResponses,
   QuestionReplyErrors,
   QuestionReplyResponses,
-  RealtimeSessionErrors,
-  RealtimeSessionResponses,
   SessionAbortErrors,
   SessionAbortResponses,
   SessionChildrenErrors,
   SessionChildrenResponses,
+  SessionClientSecretCreateErrors,
+  SessionClientSecretCreateResponses,
+  SessionClientSecretGetErrors,
+  SessionClientSecretGetResponses,
   SessionCommandErrors,
   SessionCommandResponses,
   SessionCreateErrors,
@@ -883,6 +885,76 @@ export class Transcript extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+}
+
+export class ClientSecret extends HeyApiClient {
+  /**
+   * Get client secret
+   *
+   * Get the saved OpenAI Realtime API ephemeral token for a session. Returns null if no token exists or it has expired.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionClientSecretGetResponses,
+      SessionClientSecretGetErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/client_secret",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create client secret
+   *
+   * Create a new OpenAI Realtime API ephemeral token for WebRTC connection. Requires OpenAI provider to be configured and session to exist.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionClientSecretCreateResponses,
+      SessionClientSecretCreateErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/client_secret",
+      ...options,
+      ...params,
     })
   }
 }
@@ -1777,6 +1849,11 @@ export class Session extends HeyApiClient {
   private _transcript?: Transcript
   get transcript(): Transcript {
     return (this._transcript ??= new Transcript({ client: this.client }))
+  }
+
+  private _clientSecret?: ClientSecret
+  get clientSecret(): ClientSecret {
+    return (this._clientSecret ??= new ClientSecret({ client: this.client }))
   }
 
   private _tool?: Tool2
@@ -2965,27 +3042,6 @@ export class Tui extends HeyApiClient {
   }
 }
 
-export class Realtime extends HeyApiClient {
-  /**
-   * Get realtime session token
-   *
-   * Get an ephemeral OpenAI Realtime API session token for WebRTC connection. Requires OpenAI provider to be configured.
-   */
-  public session<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<RealtimeSessionResponses, RealtimeSessionErrors, ThrowOnError>({
-      url: "/realtime/session",
-      ...options,
-      ...params,
-    })
-  }
-}
-
 export class Instance extends HeyApiClient {
   /**
    * Dispose instance
@@ -3341,11 +3397,6 @@ export class OpencodeClient extends HeyApiClient {
   private _tui?: Tui
   get tui(): Tui {
     return (this._tui ??= new Tui({ client: this.client }))
-  }
-
-  private _realtime?: Realtime
-  get realtime(): Realtime {
-    return (this._realtime ??= new Realtime({ client: this.client }))
   }
 
   private _instance?: Instance

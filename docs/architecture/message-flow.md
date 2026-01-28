@@ -261,6 +261,78 @@ See [tool-flow.md](./tool-flow.md) for details on how tool calls work in both mo
 
 **Note:** The `/transcript` endpoint accepts optional `messageID` and `partID` parameters. When provided, the server uses these IDs instead of generating new ones, enabling the optimistic update pattern.
 
+### Input Types
+
+Client-side inference handles two input types:
+
+| Input | Source | Transcription | Storage |
+|-------|--------|---------------|---------|
+| **Text** | User types in prompt input | Not needed | `voice-mode.tsx` stores via transcript endpoint |
+| **Voice** | User speaks via microphone | OpenAI transcribes | `voice-mode.tsx` stores when transcription completes |
+
+### Client-Side Architecture
+
+**Principle:** `voice-mode.tsx` owns ALL transcript management for realtime mode, mirroring how the server-side prompt endpoint owns message handling.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Server-side Flow (Claude, GPT-4, etc.)                             │
+│                                                                     │
+│  prompt-input.tsx ──POST /session/:id/message──► Server handles all │
+│                                                   (storage + agent) │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  Client-side Flow (GPT Realtime)                                    │
+│                                                                     │
+│  prompt-input.tsx ──voiceMode.sendText()──► voice-mode.tsx handles  │
+│                                              (storage + send)       │
+│                                                                     │
+│  [microphone] ────voice input────────────► voice-mode.tsx handles   │
+│                                              (transcription + store)│
+│                                                                     │
+│  [agent response] ──────────────────────► voice-mode.tsx handles    │
+│                                              (transcription + store)│
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Why this design:**
+- Single source of truth for realtime transcript management
+- Mirrors server-side pattern where prompt endpoint handles everything
+- `prompt-input.tsx` doesn't need to know about transcript storage details
+- User voice input and text input handled consistently
+
+### Voice Input Flow
+
+When user speaks (microphone unmuted):
+
+```
+Microphone                           OpenAI Realtime                    voice-mode.tsx
+    │                                      │                                  │
+    │  Audio stream (WebRTC)               │                                  │
+    │─────────────────────────────────────►│                                  │
+    │                                      │                                  │
+    │                                      │  input_audio_transcription       │
+    │                                      │  .completed { transcript }       │
+    │                                      │─────────────────────────────────►│
+    │                                      │                                  │
+    │                                      │                                  │  addUserMessageToUI()
+    │                                      │                                  │  storeTranscript("user")
+    │                                      │                                  │
+    │                                      │  (Agent processes and responds)  │
+    │                                      │                                  │
+    │                                      │  output_audio_transcript         │
+    │                                      │  .done { transcript }            │
+    │                                      │─────────────────────────────────►│
+    │                                      │                                  │
+    │                                      │                                  │  addAssistantMessageToUI()
+    │                                      │                                  │  storeTranscript("assistant")
+```
+
+**Key OpenAI Realtime events:**
+- `conversation.item.input_audio_transcription.completed` - User voice transcription
+- `response.output_audio_transcript.done` - Assistant response transcription
+
 ### SSE Event Flow
 
 Both modes use the same SSE events for real-time UI updates:

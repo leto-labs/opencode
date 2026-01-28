@@ -1,6 +1,6 @@
 # OpenCode Tool Flow
 
-This document describes how tool calling works in OpenCode for both server-side and client-side inference modes.
+This document describes how tool calling works in OpenCode for both server-side and client-side inference modes, the available default tools, and how to integrate external agents.
 
 ## Overview
 
@@ -10,6 +10,86 @@ Tools enable LLMs to interact with the local environment (file system, shell, LS
 |------|---------------|----------------|-----------------|
 | **Server-side** | Server (in agent loop) | Server | Server continues loop |
 | **Client-side** | Client (from provider) | Server (relayed) | Client returns to provider |
+
+---
+
+## Default Tools
+
+OpenCode provides **18+ built-in tools** registered in `packages/opencode/src/tool/registry.ts`:
+
+### Core Tools
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `read` | Read file contents | `filePath`, `offset?`, `limit?` |
+| `write` | Create/overwrite files | `filePath`, `content` |
+| `edit` | Edit file (search/replace) | `filePath`, `old_string`, `new_string` |
+| `bash` | Execute shell commands | `command`, `timeout?` |
+| `glob` | Find files by pattern | `pattern`, `path?` |
+| `grep` | Search file contents | `pattern`, `path?`, `include?` |
+| `webfetch` | Fetch web content | `url`, `prompt?` |
+| `websearch` | Web search (OpenCode/EXA) | `query` |
+| `codesearch` | Code search | `query` |
+| `apply_patch` | Apply unified diffs | `patch` (used for GPT models) |
+
+### Extended Tools
+
+| Tool | Description | Availability |
+|------|-------------|--------------|
+| `question` | Interactive user questions | CLI/app/desktop only |
+| `task` | Create/manage subtasks | Always |
+| `todoread` | Read todo list | Always |
+| `todowrite` | Write todo list | Always |
+| `skill` | Load skill workflows | Always |
+| `batch` | Execute multiple operations | Experimental (config flag) |
+| `lsp` | Language server interactions | Experimental (flag) |
+| `plan_enter`/`plan_exit` | Plan mode tools | Experimental (CLI only) |
+
+### MCP Tools
+
+MCP (Model Context Protocol) tools are loaded from configured MCP servers and prefixed with the server name:
+- Format: `{serverName}_{toolName}` (e.g., `github_search_code`)
+- Configured in `.opencode/config.json` or global config
+
+---
+
+## Tool Interface
+
+Every tool implements the `Tool.Info` interface from `packages/opencode/src/tool/tool.ts`:
+
+```typescript
+interface Tool.Info<Parameters, Metadata> {
+  id: string
+  init: (ctx?: InitContext) => Promise<{
+    description: string
+    parameters: Parameters        // Zod schema
+    execute(args, ctx): Promise<{
+      title: string               // Human-readable summary
+      metadata: Metadata          // Tool-specific data
+      output: string              // Result text
+      attachments?: FilePart[]    // Optional file attachments
+    }>
+    formatValidationError?(error: z.ZodError): string
+  }>
+}
+```
+
+### Tool Context
+
+Tools receive a context object with:
+
+```typescript
+interface Tool.Context {
+  sessionID: string              // Current session
+  messageID: string              // Parent message
+  agent: string                  // Agent name
+  abort: AbortSignal             // For cancellation
+  callID?: string                // Provider's call ID
+  extra?: Record<string, any>    // Extra context
+  metadata(input): void          // Update tool part metadata
+  ask(request): Promise<void>    // Request permission
+}
+```
 
 ---
 
@@ -114,50 +194,51 @@ Client (Browser)                    Server                         OpenAI Realti
       │──────────────────────────────►│                                   │
       │                               │  Find tool by name                │
       │                               │  Execute tool                     │
-      │                               │  Store ToolPart (optional)        │
+      │                               │  Store ToolPart                   │
       │◄──────────────────────────────│                                   │
       │  { callId, result, error? }   │                                   │
       │                               │                                   │
       │  session.sendToolResult()     │                                   │
       │───────────────────────────────────────────────────────────────────►│
-      │                               │                                   │
       │                               │                           Continues
       │                               │                           response
 ```
 
 ### Endpoint: `POST /session/:id/tool/call`
 
+**Request Schema:**
 ```typescript
-// Request
 {
-  toolName: string,      // e.g., "read", "bash", "write"
-  callId: string,        // From provider, for correlation
-  arguments: {           // Tool-specific arguments
-    filePath?: string,
-    command?: string,
+  toolName: string      // Tool ID (e.g., "read", "bash", "write")
+  callId: string        // From provider, for correlation
+  arguments: {          // Tool-specific arguments
+    filePath?: string
+    command?: string
     // ...
   }
 }
+```
 
-// Response
+**Response Schema:**
+```typescript
 {
-  callId: string,        // Echo back for correlation
-  result: any,           // Tool output
-  error?: string         // If execution failed
+  callId: string        // Echo back for correlation
+  result: any           // Tool output (string)
+  error?: string        // If execution failed
 }
 ```
 
-### Why a Separate Endpoint?
+### Implementation Details
 
-The existing `/command` endpoint won't work because:
-- It's for predefined slash commands (`/commit`, `/review`)
-- It expands templates and runs full prompt flow
-- Not suitable for arbitrary tool execution
+From `server/routes/session.ts:989-1137`:
 
-The `/tool/call` endpoint:
-- Executes any registered tool by name
-- Returns result directly (no inference loop)
-- Client handles returning result to provider
+1. **Session validation**: Verifies session exists
+2. **Tool lookup**: Finds tool from `ToolRegistry.tools()`
+3. **Message creation**: Creates assistant message to hold tool call
+4. **ToolPart creation**: Creates part with "running" status
+5. **Tool execution**: Calls `tool.execute(args, ctx)`
+6. **Result storage**: Updates ToolPart with result/error
+7. **Response**: Returns `{ callId, result, error? }`
 
 ---
 
@@ -180,6 +261,10 @@ interface ToolPart {
     error?: string       // If failed
     title?: string       // Human-readable summary
     metadata?: any       // Tool-specific data
+    time?: {
+      start: number
+      end?: number
+    }
   }
 }
 ```
@@ -188,34 +273,116 @@ interface ToolPart {
 
 ## Permission System
 
-Tools require permissions before execution. Both modes use the same permission system:
+Tools require permissions before execution. The permission system is defined in `permission/next.ts`.
+
+### Three-Level Permission Model
+
+1. **Default permissions** (Agent-level)
+   - Deny "question", "plan_enter", "plan_exit" by default
+   - Allow everything else
+   - Deny .env file reads
+
+2. **User permissions** (from config)
+   - Can override defaults per permission type
+   - Pattern-based matching with wildcards
+
+3. **Agent permissions** (role-based)
+   - "build" - Question and plan tools allowed
+   - "explore" - Only read, grep, glob, bash, web tools
+   - "general" - All except todo tools
+
+### Permission Flow
 
 ```typescript
-// Check if tool is allowed
-const allowed = await Permission.check(sessionID, toolName, args)
+// Inside tool execution
+await ctx.ask({
+  permission: "read",     // Permission type
+  patterns: [filepath],   // What's being accessed
+  always: ["*"],          // Auto-allow patterns
+  metadata: {}            // Context info
+})
+```
 
-if (!allowed) {
-  // Server-side: pauses loop, waits for user approval
-  // Client-side: returns error, client handles UX
+If permission is not granted:
+- **Server-side**: Pauses loop, publishes `permission.asked` event, waits for user approval
+- **Client-side**: Currently bypassed (ctx.ask is no-op in /tool/call endpoint)
+
+### Permission Actions
+
+| Action | Behavior |
+|--------|----------|
+| `allow` | Proceed immediately |
+| `deny` | Throw `DeniedError`, halt execution |
+| `ask` | Wait for user approval |
+
+### Permission Rules in Config
+
+```json
+{
+  "permission": {
+    "bash": "ask",
+    "read": {
+      "*": "allow",
+      "~/.ssh/*": "deny"
+    },
+    "edit": "ask"
+  }
 }
 ```
 
-See `permission/index.ts` for the full permission system.
-
 ---
 
-## Available Tools
+## Safeguards and Error Handling
 
-| Tool | Description | Key Arguments |
-|------|-------------|---------------|
-| `read` | Read file contents | `filePath`, `offset?`, `limit?` |
-| `write` | Write/create file | `filePath`, `content` |
-| `edit` | Edit file (search/replace) | `filePath`, `old`, `new` |
-| `bash` | Execute shell command | `command`, `timeout?` |
-| `glob` | Find files by pattern | `pattern`, `path?` |
-| `grep` | Search file contents | `pattern`, `path?` |
-| `lsp_*` | Language server operations | Varies |
-| `mcp_*` | MCP server tools | Varies |
+### Input Validation
+
+`Tool.define()` wraps execute with Zod schema validation:
+
+```typescript
+toolInfo.execute = async (args, ctx) => {
+  try {
+    toolInfo.parameters.parse(args)
+  } catch (error) {
+    if (error instanceof z.ZodError && toolInfo.formatValidationError) {
+      throw new Error(toolInfo.formatValidationError(error), { cause: error })
+    }
+    throw new Error(
+      `The ${id} tool was called with invalid arguments: ${error}.`
+    )
+  }
+  // ... execute
+}
+```
+
+### Output Truncation
+
+Large outputs are automatically truncated (`tool/truncation.ts`):
+
+- **Max lines**: 2000 (default)
+- **Max bytes**: 50KB
+- **Behavior**:
+  - Truncated content saved to disk
+  - Agent directed to use grep/read with offset
+  - Task tool can delegate to explore agent
+
+### Doom Loop Detection
+
+`SessionProcessor` detects repeated identical tool calls:
+
+```typescript
+// If same tool called 3x with identical inputs
+if (doomLoopCount >= 3) {
+  // Triggers "doom_loop" permission check
+  // Prevents infinite tool call loops
+}
+```
+
+### External Directory Protection
+
+`assertExternalDirectory()` checks file access:
+- Resolves symlinks and relative paths
+- Requires permission for paths outside workspace
+- Prevents accidental access to system files
 
 ---
 
@@ -226,8 +393,8 @@ See `permission/index.ts` for the full permission system.
 | Tool decision | LLM via server | LLM via client |
 | Tool execution | Immediate in loop | Relayed via `/tool/call` |
 | Result handling | Appended to context, loop continues | Returned to client, sent to provider |
-| Permission UX | Server pauses, sends SSE | Client handles (TBD) |
-| Storage | ToolPart in assistant message | ToolPart (optional, for history) |
+| Permission UX | Server pauses, sends SSE | Currently bypassed |
+| Storage | ToolPart in assistant message | ToolPart created per call |
 
 ---
 
@@ -235,8 +402,18 @@ See `permission/index.ts` for the full permission system.
 
 | File | Purpose |
 |------|---------|
-| `server/routes/session.ts` | `/tool/call` endpoint |
+| `server/routes/session.ts` | `/tool/call` endpoint (lines 989-1137) |
 | `session/prompt.ts` | Server-side tool execution in loop |
+| `tool/tool.ts` | Tool interface definition |
+| `tool/registry.ts` | Tool registration and discovery |
 | `tool/*.ts` | Individual tool implementations |
-| `permission/index.ts` | Permission checking |
-| `app/src/context/voice-mode.tsx` | Client-side tool relay (TBD) |
+| `permission/next.ts` | Permission system |
+| `mcp/index.ts` | MCP tool integration |
+
+---
+
+## See Also
+
+- [Tool Permissions](./tool-permissions.md) - Permission system deep-dive
+- [Tool API Reference](./tool-api.md) - Detailed API documentation for external agents
+- [Tool Integration Guide](./tool-integration.md) - How to execute tools from external agents

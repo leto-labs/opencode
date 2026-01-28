@@ -228,7 +228,10 @@ session.on("history_added", async (item: unknown) => {
 - [x] Assistant responses stored via transcript endpoint (captured from `response.output_audio_transcript.done` event)
 - [x] Messages appear in chat UI (both user and assistant messages persist after refresh)
 - [x] Real-time UI updates for assistant messages (fixed: directory-specific SDK client for SSE event routing)
-- [ ] Conversation context available when switching to realtime mid-conversation
+- [x] User voice input transcripts stored (capture `input_audio_transcription.completed`)
+- [x] Transcript storage consolidated in voice-mode.tsx
+- [x] Conversation context available when switching to realtime mid-conversation
+- [x] Session switching reconnects WebRTC with fresh history
 
 ## Implementation Summary
 
@@ -239,21 +242,26 @@ session.on("history_added", async (item: unknown) => {
 | GPT Realtime model in picker | ✅ | Injected as client-side model |
 | Auto-connect on model select | ✅ | Connects when GPT Realtime selected |
 | Text input to realtime agent | ✅ | `voiceMode.sendText()` |
-| User transcript storage | ✅ | Via SDK `session.transcript.add()` |
+| User **text** transcript storage | ✅ | Via `voiceMode.sendText()` in voice-mode.tsx |
+| User **voice** transcript storage | ✅ | Capturing `input_audio_transcription.completed` |
 | Assistant transcript storage | ✅ | Captured from `response.output_audio_transcript.done` |
 | Speaker mute/unmute | ✅ | `audioElement.muted` |
 | Microphone mute/unmute | ✅ | `transport.mute()` with visual states |
 | Real-time UI updates | ✅ | Fixed with directory-specific SDK client |
 | Optimistic updates | ✅ | Client-generated IDs passed to server |
 | Message persistence | ✅ | Both user and assistant messages survive refresh |
+| Code structure | ✅ | Transcript storage consolidated in voice-mode.tsx |
+| Session switching | ✅ | Auto-disconnect/reconnect when session changes |
 
 ### Remaining Issues
 
 | Issue | Priority | Description |
 |-------|----------|-------------|
-| Conversation context | High | Realtime agent doesn't know prior conversation history |
-| Session cleared on disconnect | Medium | Toggling voice mode off clears realtime session |
-| Session switching | Medium | Need to disconnect/reconnect when switching OpenCode sessions |
+| ~~User voice input not transcribed~~ | ~~High~~ | ✅ FIXED - Capturing `input_audio_transcription.completed` |
+| ~~Code structure cleanup~~ | ~~High~~ | ✅ FIXED - Consolidated in voice-mode.tsx |
+| ~~Conversation context recovery~~ | ~~High~~ | ✅ FIXED - Loading session history into agent instructions |
+| ~~Session switching~~ | ~~High~~ | ✅ FIXED - Auto-disconnect/reconnect when `params.id` changes |
+| Session cleared on disconnect | Low | Toggling voice mode off clears realtime session |
 
 ## Files to Modify
 
@@ -294,7 +302,7 @@ When GPT Realtime model is selected:
 - **Session cleared on disconnect**: When toggling voice mode off, the realtime session is cleared. Should preserve session or reconnect gracefully.
 - **Session switching**: Need to handle disconnecting/reconnecting when switching between sessions in the tab bar.
 - ~~**Duplicate user messages**: User messages may appear twice in the UI (optimistic update + SSE event). Need deduplication logic.~~ **FIXED** - see "Duplicate User Messages Fix" below.
-- **Conversation context not available to realtime agent**: When switching to GPT Realtime mid-conversation, the agent doesn't have access to previous messages. See "Conversation Context Recovery" below.
+- ~~**Conversation context not available to realtime agent**~~: ✅ FIXED - Session history is now loaded and injected into agent instructions when connecting.
 
 ## Real-Time UI Updates
 
@@ -448,9 +456,199 @@ The SSE reconciliation logic in the sync store uses binary search on message IDs
 
 By passing the same `messageID` used for the optimistic message, the SSE event updates the existing entry instead of creating a duplicate.
 
-## Conversation Context Recovery
+## Code Structure Refactoring (COMPLETED)
 
-### Problem
+### Problem (Resolved)
+
+The current implementation splits transcript storage logic across two files:
+
+| File | Responsibility | Issue |
+|------|---------------|-------|
+| `prompt-input.tsx` | Stores **user text** transcripts | Direct SDK call in component |
+| `voice-mode.tsx` | Stores **assistant** transcripts | `storeTranscript()` only handles assistant |
+
+Additionally, **user voice input is never transcribed**:
+- OpenAI Realtime sends `conversation.item.input_audio_transcription.completed` for user speech
+- We only listen for `response.output_audio_transcript.done` (assistant)
+- User voice transcripts are lost
+
+### Current Flow (Problematic)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Text Input                                                         │
+│                                                                     │
+│  prompt-input.tsx                                                   │
+│  ├─ sdk.client.session.transcript.add({ role: "user", ... })  ◄─── Split here
+│  └─ voiceMode.sendText(text)                                        │
+│                                                                     │
+│  voice-mode.tsx                                                     │
+│  └─ storeTranscript("assistant", ...) ◄───────────────────────────── And here
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  Voice Input                                                        │
+│                                                                     │
+│  [microphone] → OpenAI Realtime → input_audio_transcription         │
+│                                   .completed                        │
+│                                        │                            │
+│                                        ▼                            │
+│                                   NOT CAPTURED ❌                   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Solution: Consolidate in voice-mode.tsx
+
+**Principle:** `voice-mode.tsx` owns ALL transcript management for realtime mode, mirroring how the server-side prompt endpoint owns message handling.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Server-side Model                                                  │
+│                                                                     │
+│  prompt-input.tsx ──POST /session/:id/message──► Server handles all │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  Client-side Model (Realtime)                                       │
+│                                                                     │
+│  prompt-input.tsx ──voiceMode.sendText()──► voice-mode.tsx handles  │
+│                                              all storage + sending  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Changes Required
+
+**1. Modify `sendText()` in voice-mode.tsx:**
+
+```typescript
+// Before: Just sends to agent
+const sendText = (text: string) => {
+  session.sendMessage(text)
+  return true
+}
+
+// After: Stores transcript AND sends to agent
+const sendText = async (text: string, options?: {
+  messageID?: string
+  partID?: string
+}): Promise<boolean> => {
+  // Store user transcript (with IDs for optimistic update deduplication)
+  await storeTranscript("user", text, options?.messageID, options?.partID)
+
+  // Send to realtime agent
+  session.sendMessage(text)
+  return true
+}
+```
+
+**2. Add user voice input listener in voice-mode.tsx:**
+
+```typescript
+session.on("transport_event", (event) => {
+  // User voice input transcription (NEW)
+  if (event.type === "conversation.item.input_audio_transcription.completed"
+      && event.transcript) {
+    addUserMessageToUI(event.transcript)
+    void storeTranscript("user", event.transcript)
+  }
+
+  // Assistant transcription (existing)
+  if (event.type === "response.output_audio_transcript.done"
+      && event.transcript) {
+    addAssistantMessageToUI(event.transcript)
+    void storeTranscript("assistant", event.transcript)
+  }
+})
+```
+
+**3. Simplify prompt-input.tsx:**
+
+```typescript
+// Before: Component handles transcript storage
+if (isClientSideModel()) {
+  await sdk.client.session.transcript.add({ ... })  // Remove this
+  voiceMode.sendText(text)
+}
+
+// After: Just call sendText, voice-mode handles everything
+if (isClientSideModel()) {
+  voiceMode.setSessionContext(session.id, sdk.directory)
+  const success = await voiceMode.sendText(text, { messageID, partID })
+  if (!success) { /* handle error */ }
+}
+```
+
+### Benefits
+
+1. **Single source of truth** - All realtime transcript logic in one file
+2. **Bug fix** - User voice input will be captured
+3. **Consistency** - Mirrors server-side pattern where prompt endpoint handles everything
+4. **Simpler prompt-input** - Component doesn't need to know about transcript storage
+5. **Testability** - Easier to test voice-mode.tsx in isolation
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `voice-mode.tsx` | Update `sendText()` to store transcript, add user voice listener |
+| `prompt-input.tsx` | Remove direct transcript SDK call, simplify to just `voiceMode.sendText()` |
+
+## Session Management Issues
+
+### Current Bug: Global Voice Context
+
+The `VoiceModeProvider` is a global context that persists across OpenCode session switches:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Current (Buggy) Behavior                                           │
+│                                                                     │
+│  OpenCode Session A (voice) ──switch──► OpenCode Session B (voice)  │
+│           │                                      │                  │
+│           └──── WebRTC connection persists ──────┘                  │
+│                 Agent still has Session A context                   │
+│                 Transcripts go to Session B                         │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Correct Behavior
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Voice Session → Regular Session                                    │
+│                                                                     │
+│  OpenCode Session A (voice) ──switch──► OpenCode Session B (text)   │
+│           │                                      │                  │
+│           └──── Disconnect WebRTC ───────────────┘                  │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  Voice Session → Different Voice Session                            │
+│                                                                     │
+│  OpenCode Session A (voice) ──switch──► OpenCode Session B (voice)  │
+│           │                                      │                  │
+│           │  1. Disconnect old WebRTC            │                  │
+│           │  2. Connect new WebRTC               │                  │
+│           │  3. Inject Session B history         │                  │
+│           └──────────────────────────────────────┘                  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Plan
+
+1. ✅ **Conversation context recovery** - DONE
+   - Load session history when connecting
+   - Inject into realtime session as system context
+
+2. ✅ **Session switching** - DONE
+   - Added `createEffect` in `prompt-input.tsx` that watches `params.id` changes
+   - On session change: disconnect old WebRTC, wait 100ms, reconnect with new session context
+   - New session history is loaded and injected into agent instructions
+
+## Conversation Context Recovery (COMPLETED)
+
+### Problem (Resolved)
 
 When switching to GPT Realtime mid-conversation, the realtime agent doesn't have access to previous conversation history from the OpenCode session.
 
@@ -466,40 +664,32 @@ This happens because:
 2. GPT Realtime starts a fresh WebRTC session with no prior context
 3. Transcripts are stored for persistence but not injected into the realtime session
 
-### Solution (Not Yet Implemented)
+### Solution (Implemented)
 
-When connecting to GPT Realtime, load session history and inject it into the realtime session:
+When connecting to GPT Realtime, load session history and inject it using `session.updateHistory()`:
 
 ```typescript
 // In voice-mode.tsx connect()
 const connect = async () => {
-  // ... existing setup ...
+  // ... create session and connect ...
+  await session.connect({ apiKey: ephemeralKey })
 
-  // Load conversation history from session
-  const messages = await sdk.client.session.messages.list({
-    sessionID: currentSessionID,
-    limit: 50, // Recent history
-  })
-
-  // Format as context for realtime session
-  const conversationHistory = messages.data
-    ?.filter(m => m.info.role === "user" || m.info.role === "assistant")
-    .map(m => ({
-      role: m.info.role,
-      content: m.parts.filter(p => p.type === "text").map(p => p.text).join("\n"),
-    }))
-
-  // Inject into realtime session as system context or conversation items
-  if (conversationHistory?.length) {
-    session.updateSession({
-      instructions: `Previous conversation:\n${conversationHistory.map(m => `${m.role}: ${m.content}`).join("\n")}`,
-    })
-    // Or use conversation.item.create for each message
+  // Load conversation history and convert to RealtimeItem[] format
+  const conversationHistory = await loadConversationHistory()
+  if (conversationHistory && conversationHistory.length > 0) {
+    session.updateHistory(conversationHistory)
+    console.log("[voice] injected conversation history via updateHistory")
   }
 
   // ... rest of connect logic ...
 }
+
+// loadConversationHistory returns RealtimeItem[] format:
+// - User messages: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] }
+// - Assistant messages: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] }
 ```
+
+**Key insight:** Use `session.updateHistory()` instead of injecting history into agent instructions. This properly populates the realtime session's conversation history, allowing the model to reference prior messages naturally.
 
 ### Alternative Approaches
 
@@ -521,3 +711,70 @@ const connect = async () => {
 - Voice indicator showing when assistant is speaking
 - Option to switch between voice and text input mid-conversation
 - Conversation context injection when switching to realtime model
+
+## Future Tasks
+
+### Save OpenAI Session Tokens + TTL
+
+**Goal:** Cache ephemeral session tokens to avoid the full connection cycle on every reconnect.
+
+**Problem:**
+Currently, every time we connect to GPT Realtime, we:
+1. Request a new ephemeral key from the server (`POST /realtime/session`)
+2. Server calls OpenAI API to create session and get ephemeral key
+3. Client uses ephemeral key to establish WebRTC connection
+
+This adds latency (~1-2 seconds) to every connection, even when reconnecting to the same session within a short time window.
+
+**Solution:**
+Cache the ephemeral token on the client with its TTL (time-to-live):
+
+```typescript
+interface CachedToken {
+  token: string
+  expiresAt: number  // Unix timestamp
+  sessionID: string  // OpenCode session this token is for
+}
+
+// In voice-mode.tsx
+let cachedToken: CachedToken | null = null
+
+const getEphemeralKey = async (): Promise<string | null> => {
+  const sid = sessionID()
+
+  // Check cache validity
+  if (cachedToken &&
+      cachedToken.sessionID === sid &&
+      cachedToken.expiresAt > Date.now() + 30_000) {  // 30s buffer
+    console.log("[voice] using cached ephemeral key")
+    return cachedToken.token
+  }
+
+  // Fetch new token
+  const client = getDirectoryClient() ?? globalSDK.client
+  const response = await client.realtime.session()
+
+  if (response.error || !response.data?.value) {
+    return null
+  }
+
+  // Cache with TTL (OpenAI ephemeral keys typically last 60 seconds)
+  cachedToken = {
+    token: response.data.value,
+    expiresAt: Date.now() + 55_000,  // 55s to be safe
+    sessionID: sid,
+  }
+
+  return cachedToken.token
+}
+```
+
+**Benefits:**
+- Faster reconnection when toggling voice mode on/off
+- Reduced API calls to OpenAI
+- Better UX for session switching within TTL window
+
+**Considerations:**
+- Need to verify OpenAI ephemeral key TTL (currently assumed ~60 seconds)
+- Clear cache when session changes to avoid cross-session issues
+- Handle token expiry gracefully (fallback to fetch new token)

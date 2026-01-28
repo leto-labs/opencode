@@ -31,7 +31,17 @@ export type View = LocalFile["view"]
 export type LocalModel = Omit<Model, "provider"> & {
   provider: Provider
   latest?: boolean
+  /**
+   * If true, inference happens client-side (e.g., WebRTC to OpenAI).
+   * Server is used only for persistence (transcripts) and tool execution.
+   */
   clientSide?: boolean
+  /**
+   * If true, model supports audio input/output.
+   * Enables mic/speaker controls and WebRTC audio streaming.
+   * Implies clientSide: true.
+   */
+  voice?: boolean
 }
 export type ModelKey = { providerID: string; modelID: string }
 
@@ -48,7 +58,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     // Client-side model ID for GPT Realtime
     const CLIENT_SIDE_MODEL_ID = "gpt-realtime"
-    const CLIENT_SIDE_PROVIDER_ID = "openai-realtime"
+    const CLIENT_SIDE_PROVIDER_ID = "openai"
 
     function isModelValid(model: ModelKey) {
       // Client-side models are valid when OpenAI is connected (shares API key)
@@ -215,13 +225,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             release_date: "2024-10-01",
             provider: {
               id: CLIENT_SIDE_PROVIDER_ID,
-              name: "OpenAI Realtime",
+              name: "OpenAI",
               source: "config" as const,
               env: [],
               options: {},
               models: {},
             },
             clientSide: true,
+            voice: true,
           },
         ]
       })
@@ -232,6 +243,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           name: m.name.replace("(latest)", "").trim(),
           latest: m.name.includes("(latest)"),
           clientSide: false,
+          voice: false,
         })),
         ...clientSideModels(),
       ])

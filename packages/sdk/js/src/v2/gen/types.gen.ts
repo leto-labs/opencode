@@ -2133,10 +2133,6 @@ export type McpStatus =
   | McpStatusNeedsAuth
   | McpStatusNeedsClientRegistration
 
-export type RealtimeSessionToken = {
-  value: string
-}
-
 export type Path = {
   home: string
   state: string
@@ -3792,6 +3788,81 @@ export type SessionTranscriptAddResponses = {
 
 export type SessionTranscriptAddResponse = SessionTranscriptAddResponses[keyof SessionTranscriptAddResponses]
 
+export type SessionClientSecretGetData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/client_secret"
+}
+
+export type SessionClientSecretGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionClientSecretGetError = SessionClientSecretGetErrors[keyof SessionClientSecretGetErrors]
+
+export type SessionClientSecretGetResponses = {
+  /**
+   * Ephemeral session token or null
+   */
+  200: {
+    value: string
+    expiresAt: number
+  } | null
+}
+
+export type SessionClientSecretGetResponse = SessionClientSecretGetResponses[keyof SessionClientSecretGetResponses]
+
+export type SessionClientSecretCreateData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/client_secret"
+}
+
+export type SessionClientSecretCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionClientSecretCreateError = SessionClientSecretCreateErrors[keyof SessionClientSecretCreateErrors]
+
+export type SessionClientSecretCreateResponses = {
+  /**
+   * Ephemeral session token
+   */
+  200: {
+    value: string
+    expiresAt: number
+  }
+}
+
+export type SessionClientSecretCreateResponse =
+  SessionClientSecretCreateResponses[keyof SessionClientSecretCreateResponses]
+
 export type SessionToolCallData = {
   body?: {
     toolName: string
@@ -4820,33 +4891,6 @@ export type TuiControlResponseResponses = {
 }
 
 export type TuiControlResponseResponse = TuiControlResponseResponses[keyof TuiControlResponseResponses]
-
-export type RealtimeSessionData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/realtime/session"
-}
-
-export type RealtimeSessionErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type RealtimeSessionError = RealtimeSessionErrors[keyof RealtimeSessionErrors]
-
-export type RealtimeSessionResponses = {
-  /**
-   * Ephemeral session token
-   */
-  200: RealtimeSessionToken
-}
-
-export type RealtimeSessionResponse = RealtimeSessionResponses[keyof RealtimeSessionResponses]
 
 export type InstanceDisposeData = {
   body?: never
