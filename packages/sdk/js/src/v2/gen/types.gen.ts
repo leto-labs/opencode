@@ -1999,6 +1999,54 @@ export type SubtaskPartInput = {
   command?: string
 }
 
+export type TranscriptTextPartInput = {
+  id?: string
+  type: "text"
+  text: string
+  synthetic?: boolean
+  ignored?: boolean
+  time?: {
+    start: number
+    end?: number
+  }
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type TranscriptFilePartInput = {
+  id?: string
+  type: "file"
+  mime: string
+  filename?: string
+  url: string
+  source?: FilePartSource
+}
+
+export type TranscriptAgentPartInput = {
+  id?: string
+  type: "agent"
+  name: string
+  source?: {
+    value: string
+    start: number
+    end: number
+  }
+}
+
+export type TranscriptSubtaskPartInput = {
+  id?: string
+  type: "subtask"
+  prompt: string
+  description: string
+  agent: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  command?: string
+}
+
 export type ProviderAuthMethod = {
   type: "oauth" | "api"
   label: string
@@ -3689,6 +3737,177 @@ export type PermissionRespondResponses = {
 }
 
 export type PermissionRespondResponse = PermissionRespondResponses[keyof PermissionRespondResponses]
+
+export type SessionTranscriptAddData = {
+  body?: {
+    messageID?: string
+    role: "user" | "assistant"
+    model?: {
+      providerID: string
+      modelID: string
+    }
+    agent?: string
+    parts: Array<
+      TranscriptTextPartInput | TranscriptFilePartInput | TranscriptAgentPartInput | TranscriptSubtaskPartInput
+    >
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/transcript"
+}
+
+export type SessionTranscriptAddErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionTranscriptAddError = SessionTranscriptAddErrors[keyof SessionTranscriptAddErrors]
+
+export type SessionTranscriptAddResponses = {
+  /**
+   * Transcript added
+   */
+  200: {
+    info: Message
+    parts: Array<Part>
+  }
+}
+
+export type SessionTranscriptAddResponse = SessionTranscriptAddResponses[keyof SessionTranscriptAddResponses]
+
+export type SessionClientSecretGetData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/client_secret"
+}
+
+export type SessionClientSecretGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionClientSecretGetError = SessionClientSecretGetErrors[keyof SessionClientSecretGetErrors]
+
+export type SessionClientSecretGetResponses = {
+  /**
+   * Ephemeral session token or null
+   */
+  200: {
+    value: string
+    expiresAt: number
+  } | null
+}
+
+export type SessionClientSecretGetResponse = SessionClientSecretGetResponses[keyof SessionClientSecretGetResponses]
+
+export type SessionClientSecretCreateData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/client_secret"
+}
+
+export type SessionClientSecretCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionClientSecretCreateError = SessionClientSecretCreateErrors[keyof SessionClientSecretCreateErrors]
+
+export type SessionClientSecretCreateResponses = {
+  /**
+   * Ephemeral session token
+   */
+  200: {
+    value: string
+    expiresAt: number
+  }
+}
+
+export type SessionClientSecretCreateResponse =
+  SessionClientSecretCreateResponses[keyof SessionClientSecretCreateResponses]
+
+export type SessionToolCallData = {
+  body?: {
+    toolName: string
+    callId: string
+    arguments: {
+      [key: string]: unknown
+    }
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/tool/call"
+}
+
+export type SessionToolCallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionToolCallError = SessionToolCallErrors[keyof SessionToolCallErrors]
+
+export type SessionToolCallResponses = {
+  /**
+   * Tool executed
+   */
+  200: {
+    callId: string
+    result: unknown
+    error?: string
+  }
+}
+
+export type SessionToolCallResponse = SessionToolCallResponses[keyof SessionToolCallResponses]
 
 export type PermissionReplyData = {
   body?: {

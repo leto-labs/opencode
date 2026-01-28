@@ -97,6 +97,10 @@ import type {
   SessionAbortResponses,
   SessionChildrenErrors,
   SessionChildrenResponses,
+  SessionClientSecretCreateErrors,
+  SessionClientSecretCreateResponses,
+  SessionClientSecretGetErrors,
+  SessionClientSecretGetResponses,
   SessionCommandErrors,
   SessionCommandResponses,
   SessionCreateErrors,
@@ -130,6 +134,10 @@ import type {
   SessionSummarizeResponses,
   SessionTodoErrors,
   SessionTodoResponses,
+  SessionToolCallErrors,
+  SessionToolCallResponses,
+  SessionTranscriptAddErrors,
+  SessionTranscriptAddResponses,
   SessionUnrevertErrors,
   SessionUnrevertResponses,
   SessionUnshareErrors,
@@ -142,6 +150,10 @@ import type {
   ToolIdsResponses,
   ToolListErrors,
   ToolListResponses,
+  TranscriptAgentPartInput,
+  TranscriptFilePartInput,
+  TranscriptSubtaskPartInput,
+  TranscriptTextPartInput,
   TuiAppendPromptErrors,
   TuiAppendPromptResponses,
   TuiClearPromptResponses,
@@ -820,6 +832,177 @@ export class Experimental extends HeyApiClient {
   private _resource?: Resource
   get resource(): Resource {
     return (this._resource ??= new Resource({ client: this.client }))
+  }
+}
+
+export class Transcript extends HeyApiClient {
+  /**
+   * Add transcript
+   *
+   * Add a user or assistant transcript to a session without triggering agent execution. Used for client-side inference sessions.
+   */
+  public add<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      messageID?: string
+      role?: "user" | "assistant"
+      model?: {
+        providerID: string
+        modelID: string
+      }
+      agent?: string
+      parts?: Array<
+        TranscriptTextPartInput | TranscriptFilePartInput | TranscriptAgentPartInput | TranscriptSubtaskPartInput
+      >
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "messageID" },
+            { in: "body", key: "role" },
+            { in: "body", key: "model" },
+            { in: "body", key: "agent" },
+            { in: "body", key: "parts" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTranscriptAddResponses,
+      SessionTranscriptAddErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/transcript",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class ClientSecret extends HeyApiClient {
+  /**
+   * Get client secret
+   *
+   * Get the saved OpenAI Realtime API ephemeral token for a session. Returns null if no token exists or it has expired.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionClientSecretGetResponses,
+      SessionClientSecretGetErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/client_secret",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create client secret
+   *
+   * Create a new OpenAI Realtime API ephemeral token for WebRTC connection. Requires OpenAI provider to be configured and session to exist.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionClientSecretCreateResponses,
+      SessionClientSecretCreateErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/client_secret",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Tool2 extends HeyApiClient {
+  /**
+   * Execute tool
+   *
+   * Execute a tool and return the result. Used for client-side inference sessions where the client relays tool calls from the provider.
+   */
+  public call<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      toolName?: string
+      callId?: string
+      arguments?: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "toolName" },
+            { in: "body", key: "callId" },
+            { in: "body", key: "arguments" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionToolCallResponses, SessionToolCallErrors, ThrowOnError>({
+      url: "/session/{sessionID}/tool/call",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
   }
 }
 
@@ -1663,6 +1846,21 @@ export class Session extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  private _transcript?: Transcript
+  get transcript(): Transcript {
+    return (this._transcript ??= new Transcript({ client: this.client }))
+  }
+
+  private _clientSecret?: ClientSecret
+  get clientSecret(): ClientSecret {
+    return (this._clientSecret ??= new ClientSecret({ client: this.client }))
+  }
+
+  private _tool?: Tool2
+  get tool(): Tool2 {
+    return (this._tool ??= new Tool2({ client: this.client }))
   }
 }
 

@@ -58,6 +58,7 @@ import { createOpencodeClient, type Message, type Part } from "@opencode-ai/sdk/
 import { Binary } from "@opencode-ai/util/binary"
 import { showToast } from "@opencode-ai/ui/toast"
 import { base64Encode } from "@opencode-ai/util/encode"
+import { useVoiceMode } from "@/context/voice-mode"
 
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, "application/pdf"]
@@ -132,6 +133,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const command = useCommand()
   const permission = usePermission()
   const language = useLanguage()
+  const voiceMode = useVoiceMode()
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
@@ -230,6 +232,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const imageAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "image") as ImageAttachmentPart[],
   )
+
+  // Check if current model is a voice model (audio I/O, WebRTC)
+  const isVoiceModel = createMemo(() => local.model.current()?.voice === true)
+
+  // Voice mode connection is now handled by VoiceModeProvider lifecycle
+  // - onMount: auto-connects if client-side model is selected
+  // - onCleanup: auto-disconnects when session unmounts
+  // - model change effect: connects/disconnects based on model selection
 
   const [store, setStore] = createStore<{
     popover: "at" | "slash" | null
@@ -924,6 +934,27 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       .catch(() => {})
   }
 
+  const startVoiceSession = async () => {
+    // If no session exists, create one first
+    if (!params.id) {
+      const session = await sdk.client.session
+        .create()
+        .then((x) => x.data ?? undefined)
+        .catch((err) => {
+          showToast({
+            title: language.t("prompt.toast.sessionCreateFailed.title"),
+            description: err instanceof Error ? err.message : language.t("common.requestFailed"),
+          })
+          return undefined
+        })
+      if (!session) return
+      navigate(`/${base64Encode(sdk.directory)}/session/${session.id}`)
+      // Wait a tick for navigation to complete before connecting
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    voiceMode.connect()
+  }
+
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
     const text = prompt
       .map((p) => ("content" in p ? p.content : ""))
@@ -1578,14 +1609,41 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const send = async () => {
       const ok = await waitForWorktree()
       if (!ok) return
-      await client.session.prompt({
-        sessionID: session.id,
-        agent,
-        model,
-        messageID,
-        parts: requestParts,
-        variant,
-      })
+
+      const currentModel = local.model.current()
+
+      if (currentModel?.clientSide) {
+        // Client-side model, store transcript on the server
+        await client.session.transcript.add({
+          sessionID: session.id,
+          role: "user",
+          messageID,
+          parts: requestParts,
+        })
+
+        if (currentModel?.voice) {
+          // Voice model: auto-connect if not connected, then send
+          if (voiceMode.status() !== "connected") {
+            await voiceMode.connect()
+            // Check if connection succeeded
+            if (voiceMode.status() !== "connected") {
+              throw new Error(voiceMode.error() || "Failed to connect voice mode")
+            }
+          }
+          voiceMode.sendText(text)
+        }
+        // Client-side text-only models: transcript stored, no agent to send to
+      } else {
+        // Server-side model, send to agent
+        await client.session.prompt({
+          sessionID: session.id,
+          agent,
+          model,
+          messageID,
+          parts: requestParts,
+          variant,
+        })
+      }
     }
 
     void send().catch((err) => {
@@ -2016,6 +2074,92 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Icon name="photo" class="size-4.5" />
                   </Button>
                 </Tooltip>
+              </Show>
+              <Show when={isVoiceModel()}>
+                {/* Connection status indicator - matches Status popover design */}
+                <div class="flex items-center gap-1.5 px-2 py-1">
+                  <div
+                    classList={{
+                      "size-1.5 rounded-full": true,
+                      "bg-icon-success-base": voiceMode.status() === "connected",
+                      "bg-icon-warning-base animate-pulse": voiceMode.status() === "connecting",
+                      "bg-icon-critical-base": voiceMode.status() === "error",
+                      "bg-border-weak-base": voiceMode.status() === "disconnected",
+                    }}
+                  />
+                  <span class="text-12-regular text-text-strong">
+                    {voiceMode.status() === "connected"
+                      ? "Live"
+                      : voiceMode.status() === "connecting"
+                        ? "Connecting"
+                        : voiceMode.status() === "error"
+                          ? "Error"
+                          : "Offline"}
+                  </span>
+                </div>
+                {/* Start/Stop call button */}
+                <Show
+                  when={voiceMode.status() === "connected" || voiceMode.status() === "connecting"}
+                  fallback={
+                    <Tooltip placement="top" value="Start Realtime Session">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        class="size-6 text-green-500 hover:text-green-400 hover:bg-green-500/20"
+                        onClick={() => startVoiceSession()}
+                        aria-label="Start Realtime Session"
+                      >
+                        <Icon name="phone" class="size-4.5" />
+                      </Button>
+                    </Tooltip>
+                  }
+                >
+                  <Tooltip placement="top" value="End Realtime Session">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      class="size-6 text-red-500 hover:text-red-400 hover:bg-red-500/20"
+                      onClick={() => voiceMode.disconnect()}
+                      aria-label="End Realtime Session"
+                    >
+                      <Icon name="phone-x-mark" class="size-4.5" />
+                    </Button>
+                  </Tooltip>
+                </Show>
+                {/* Speaker button - toggle audio output (only when connected) */}
+                <Show when={voiceMode.status() === "connected"}>
+                  <Tooltip placement="top" value={voiceMode.speakerMuted() ? "Unmute speaker" : "Mute speaker"}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      class="size-6"
+                      classList={{
+                        "text-zinc-500": voiceMode.speakerMuted(),
+                        "text-green-500": !voiceMode.speakerMuted(),
+                      }}
+                      onClick={() => voiceMode.toggleSpeaker()}
+                      aria-label={voiceMode.speakerMuted() ? "Unmute speaker" : "Mute speaker"}
+                    >
+                      <Icon name={voiceMode.speakerMuted() ? "speaker-x-mark" : "speaker-wave"} class="size-4.5" />
+                    </Button>
+                  </Tooltip>
+                  {/* Microphone button - toggle audio input (only when connected) */}
+                  <Tooltip placement="top" value={voiceMode.micMuted() ? "Unmute microphone" : "Mute microphone"}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      class="size-6"
+                      classList={{
+                        "text-zinc-500": voiceMode.micMuted(),
+                        "text-red-500": !voiceMode.micMuted(),
+                      }}
+                      onClick={() => voiceMode.toggleMic()}
+                      aria-label={voiceMode.micMuted() ? "Unmute microphone" : "Mute microphone"}
+                    >
+                      <Icon name={voiceMode.micMuted() ? "microphone-slash" : "microphone"} class="size-4.5" />
+                    </Button>
+                  </Tooltip>
+                </Show>
               </Show>
             </div>
             <Tooltip
