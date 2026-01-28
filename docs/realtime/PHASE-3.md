@@ -5,6 +5,7 @@
 ## PRD
 
 Integrate GPT Realtime as a selectable model in the UI. When selected:
+
 - Auto-connect to realtime agent
 - Show speaker and microphone controls
 - Store all transcripts (text and voice) via server endpoint
@@ -52,16 +53,18 @@ Text Input          Voice Input           Assistant Response
 ## Implementation Summary
 
 ### Model Flags
+
 ```typescript
 // packages/app/src/context/local.tsx
 export type LocalModel = Omit<Model, "provider"> & {
   provider: Provider
-  clientSide?: boolean  // Inference on client, server for persistence
-  voice?: boolean       // Audio I/O, needs WebRTC
+  clientSide?: boolean // Inference on client, server for persistence
+  voice?: boolean // Audio I/O, needs WebRTC
 }
 ```
 
 ### Ephemeral Key Endpoints (Session-Scoped)
+
 ```
 POST /session/:sessionID/client_secret  - Create new token
 GET  /session/:sessionID/client_secret  - Get cached token if valid
@@ -70,30 +73,35 @@ GET  /session/:sessionID/client_secret  - Get cached token if valid
 Token cached server-side with 55-minute TTL (OpenAI tokens expire in 1 hour).
 
 ### Output Modalities
+
 OpenAI Realtime only supports `["text"]` OR `["audio"]`, not both together:
+
 - Speaker muted → `["text"]` (text-only responses)
 - Speaker unmuted → `["audio"]` (audio responses with transcript)
 
 ### Files Changed
-| File | Purpose |
-|------|---------|
-| `packages/app/src/context/local.tsx` | Model flags, GPT Realtime injection |
-| `packages/app/src/context/voice-mode.tsx` | Voice mode context, transcript storage |
-| `packages/app/src/hooks/use-realtime-connection.ts` | WebRTC connection hook |
-| `packages/app/src/components/prompt-input.tsx` | Voice UI, auto-connect on submit |
-| `packages/opencode/src/session/client_secret.ts` | Ephemeral key management |
-| `packages/opencode/src/server/routes/session.ts` | client_secret endpoints |
-| `docs/architecture/storage.md` | Storage module documentation |
+
+| File                                                | Purpose                                |
+| --------------------------------------------------- | -------------------------------------- |
+| `packages/app/src/context/local.tsx`                | Model flags, GPT Realtime injection    |
+| `packages/app/src/context/voice-mode.tsx`           | Voice mode context, transcript storage |
+| `packages/app/src/hooks/use-realtime-connection.ts` | WebRTC connection hook                 |
+| `packages/app/src/components/prompt-input.tsx`      | Voice UI, auto-connect on submit       |
+| `packages/opencode/src/session/client_secret.ts`    | Ephemeral key management               |
+| `packages/opencode/src/server/routes/session.ts`    | client_secret endpoints                |
+| `docs/architecture/storage.md`                      | Storage module documentation           |
 
 ### Key Patterns
 
 **Using SDK in hooks:**
+
 ```typescript
 const sdk = useSDK()
 await sdk.client.session.transcript.add({ sessionID, role, parts })
 ```
 
 **Storage error handling:**
+
 ```typescript
 try {
   const data = await Storage.read<T>(key)

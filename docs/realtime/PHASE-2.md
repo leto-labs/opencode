@@ -16,6 +16,7 @@ Add server-side endpoints for transcript storage and tool execution. Enables cli
 ## Implementation Summary
 
 ### Transcript Endpoint
+
 ```
 POST /session/:sessionID/transcript
 {
@@ -27,6 +28,7 @@ POST /session/:sessionID/transcript
 ```
 
 ### Tool Call Endpoint
+
 ```
 POST /session/:sessionID/tool/call
 {
@@ -37,13 +39,14 @@ POST /session/:sessionID/tool/call
 ```
 
 ### Files Changed
-| File | Purpose |
-|------|---------|
-| `packages/opencode/src/server/routes/session.ts` | Transcript and tool/call endpoints |
-| `packages/opencode/src/session/transcript.ts` | Transcript storage logic |
-| `packages/opencode/test/server/session-transcript.test.ts` | Transcript tests |
-| `packages/opencode/test/server/session-tool-call.test.ts` | Tool call tests |
-| `docs/architecture/message-flow.md` | Message flow documentation |
+
+| File                                                       | Purpose                            |
+| ---------------------------------------------------------- | ---------------------------------- |
+| `packages/opencode/src/server/routes/session.ts`           | Transcript and tool/call endpoints |
+| `packages/opencode/src/session/transcript.ts`              | Transcript storage logic           |
+| `packages/opencode/test/server/session-transcript.test.ts` | Transcript tests                   |
+| `packages/opencode/test/server/session-tool-call.test.ts`  | Tool call tests                    |
+| `docs/architecture/message-flow.md`                        | Message flow documentation         |
 
 ## Key Decisions
 

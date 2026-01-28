@@ -64,11 +64,11 @@ OpenCode implements a robust permission system that controls tool execution. The
 type Action = "allow" | "deny" | "ask"
 ```
 
-| Action | Behavior |
-|--------|----------|
+| Action  | Behavior                                       |
+| ------- | ---------------------------------------------- |
 | `allow` | Tool executes immediately, no user interaction |
-| `deny` | Throws `DeniedError`, halts tool execution |
-| `ask` | Pauses execution, waits for user approval |
+| `deny`  | Throws `DeniedError`, halts tool execution     |
+| `ask`   | Pauses execution, waits for user approval      |
 
 ### Permission Rules
 
@@ -76,9 +76,9 @@ A rule defines what action to take for a specific permission + pattern combinati
 
 ```typescript
 interface Rule {
-  permission: string   // Tool name or permission type (e.g., "read", "bash", "edit")
-  pattern: string      // Glob pattern for the target (e.g., file path, command)
-  action: Action       // What to do when rule matches
+  permission: string // Tool name or permission type (e.g., "read", "bash", "edit")
+  pattern: string // Glob pattern for the target (e.g., file path, command)
+  action: Action // What to do when rule matches
 }
 ```
 
@@ -96,21 +96,21 @@ type Ruleset = Rule[]
 
 Different tools use different permission types:
 
-| Permission | Used By | Pattern Represents |
-|------------|---------|-------------------|
-| `read` | `read` tool | File path |
-| `edit` | `edit`, `write`, `patch`, `multiedit` | File path |
-| `bash` | `bash` tool | Command prefix |
-| `grep` | `grep` tool | Search path |
-| `glob` | `glob` tool | Search path |
-| `external_directory` | Any file access outside workspace | Directory path |
-| `doom_loop` | Session processor | `*` (system-wide) |
-| `question` | `question` tool | `*` |
-| `plan_enter` | `plan_enter` tool | `*` |
-| `plan_exit` | `plan_exit` tool | `*` |
-| `todoread` | `todoread` tool | `*` |
-| `todowrite` | `todowrite` tool | `*` |
-| `{mcp_tool}` | MCP tools | `*` |
+| Permission           | Used By                               | Pattern Represents |
+| -------------------- | ------------------------------------- | ------------------ |
+| `read`               | `read` tool                           | File path          |
+| `edit`               | `edit`, `write`, `patch`, `multiedit` | File path          |
+| `bash`               | `bash` tool                           | Command prefix     |
+| `grep`               | `grep` tool                           | Search path        |
+| `glob`               | `glob` tool                           | Search path        |
+| `external_directory` | Any file access outside workspace     | Directory path     |
+| `doom_loop`          | Session processor                     | `*` (system-wide)  |
+| `question`           | `question` tool                       | `*`                |
+| `plan_enter`         | `plan_enter` tool                     | `*`                |
+| `plan_exit`          | `plan_exit` tool                      | `*`                |
+| `todoread`           | `todoread` tool                       | `*`                |
+| `todowrite`          | `todowrite` tool                      | `*`                |
+| `{mcp_tool}`         | MCP tools                             | `*`                |
 
 ---
 
@@ -126,10 +126,10 @@ OpenCode uses glob-style wildcard matching:
 
 ```typescript
 // Examples
-Wildcard.match("read", "read")           // true
-Wildcard.match("read", "*")              // true
+Wildcard.match("read", "read") // true
+Wildcard.match("read", "*") // true
 Wildcard.match("/home/user/.env", "*.env") // true
-Wildcard.match("npm install", "npm *")   // true
+Wildcard.match("npm install", "npm *") // true
 ```
 
 ### Evaluation Order
@@ -138,13 +138,11 @@ Rules are evaluated by merging rulesets in order, then finding the **last matchi
 
 ```typescript
 function evaluate(permission: string, pattern: string, ...rulesets: Ruleset[]): Rule {
-  const merged = merge(...rulesets)  // Flatten all rulesets
+  const merged = merge(...rulesets) // Flatten all rulesets
   const match = merged.findLast(
-    (rule) =>
-      Wildcard.match(permission, rule.permission) &&
-      Wildcard.match(pattern, rule.pattern)
+    (rule) => Wildcard.match(permission, rule.permission) && Wildcard.match(pattern, rule.pattern),
   )
-  return match ?? { action: "ask", permission, pattern: "*" }  // Default: ask
+  return match ?? { action: "ask", permission, pattern: "*" } // Default: ask
 }
 ```
 
@@ -165,20 +163,20 @@ OpenCode defines sensible defaults in `agent/agent.ts`:
 
 ```typescript
 const defaults = PermissionNext.fromConfig({
-  "*": "allow",                    // Allow all tools by default
-  doom_loop: "ask",                // Ask when detecting repeated calls
+  "*": "allow", // Allow all tools by default
+  doom_loop: "ask", // Ask when detecting repeated calls
   external_directory: {
-    "*": "ask",                    // Ask for paths outside workspace
-    [Truncate.DIR]: "allow",       // Allow truncation temp directory
+    "*": "ask", // Ask for paths outside workspace
+    [Truncate.DIR]: "allow", // Allow truncation temp directory
   },
-  question: "deny",                // Deny interactive questions by default
-  plan_enter: "deny",              // Deny plan mode by default
+  question: "deny", // Deny interactive questions by default
+  plan_enter: "deny", // Deny plan mode by default
   plan_exit: "deny",
   read: {
-    "*": "allow",                  // Allow reading most files
-    "*.env": "ask",                // Ask before reading .env files
+    "*": "allow", // Allow reading most files
+    "*.env": "ask", // Ask before reading .env files
     "*.env.*": "ask",
-    "*.env.example": "allow",      // Allow reading .env.example
+    "*.env.example": "allow", // Allow reading .env.example
   },
 })
 ```
@@ -195,8 +193,8 @@ Each agent can define its own permission overrides:
 permission: PermissionNext.merge(
   defaults,
   PermissionNext.fromConfig({
-    question: "allow",     // Can ask questions
-    plan_enter: "allow",   // Can enter plan mode
+    question: "allow", // Can ask questions
+    plan_enter: "allow", // Can enter plan mode
   }),
   user,
 )
@@ -210,15 +208,15 @@ Restricted to read-only operations:
 permission: PermissionNext.merge(
   defaults,
   PermissionNext.fromConfig({
-    "*": "deny",           // Deny everything by default
-    grep: "allow",         // Allow search tools
+    "*": "deny", // Deny everything by default
+    grep: "allow", // Allow search tools
     glob: "allow",
     list: "allow",
-    bash: "allow",         // Allow bash (for git, etc.)
+    bash: "allow", // Allow bash (for git, etc.)
     webfetch: "allow",
     websearch: "allow",
     codesearch: "allow",
-    read: "allow",         // Allow reading files
+    read: "allow", // Allow reading files
     external_directory: {
       [Truncate.DIR]: "allow",
     },
@@ -233,7 +231,7 @@ permission: PermissionNext.merge(
 permission: PermissionNext.merge(
   defaults,
   PermissionNext.fromConfig({
-    todoread: "deny",      // Deny todo access
+    todoread: "deny", // Deny todo access
     todowrite: "deny",
   }),
   user,
@@ -251,8 +249,8 @@ permission: PermissionNext.merge(
     question: "allow",
     plan_exit: "allow",
     edit: {
-      "*": "deny",                                    // Deny editing by default
-      [".opencode/plans/*.md"]: "allow",             // Allow plan files
+      "*": "deny", // Deny editing by default
+      [".opencode/plans/*.md"]: "allow", // Allow plan files
     },
   }),
   user,
@@ -316,10 +314,10 @@ Inside tool execution, call `ctx.ask()`:
 ```typescript
 // Example from read.ts
 await ctx.ask({
-  permission: "read",           // Permission type
-  patterns: [filepath],         // Patterns being accessed
-  always: ["*"],                // Patterns for "always" approval
-  metadata: {},                 // Optional context
+  permission: "read", // Permission type
+  patterns: [filepath], // Patterns being accessed
+  always: ["*"], // Patterns for "always" approval
+  metadata: {}, // Optional context
 })
 ```
 
@@ -371,7 +369,7 @@ if (reply === "reject") {
 }
 
 if (reply === "once") {
-  existing.resolve()  // Allow this one call
+  existing.resolve() // Allow this one call
   return
 }
 
@@ -408,17 +406,18 @@ GET /permission/
 Returns all pending permission requests across all sessions.
 
 **Response:**
+
 ```typescript
 Array<{
-  id: string              // Permission request ID
-  sessionID: string       // Session that triggered the request
-  permission: string      // Permission type (e.g., "read", "bash")
-  patterns: string[]      // Patterns being accessed
-  metadata: object        // Context information
-  always: string[]        // Patterns for "always" approval
+  id: string // Permission request ID
+  sessionID: string // Session that triggered the request
+  permission: string // Permission type (e.g., "read", "bash")
+  patterns: string[] // Patterns being accessed
+  metadata: object // Context information
+  always: string[] // Patterns for "always" approval
   tool?: {
-    messageID: string     // Message containing tool call
-    callID: string        // Tool call ID
+    messageID: string // Message containing tool call
+    callID: string // Tool call ID
   }
 }>
 ```
@@ -430,6 +429,7 @@ POST /permission/{requestID}/reply
 ```
 
 **Request Body:**
+
 ```typescript
 {
   reply: "once" | "always" | "reject"
@@ -438,17 +438,18 @@ POST /permission/{requestID}/reply
 ```
 
 **Response:**
+
 ```typescript
-true  // Success
+true // Success
 ```
 
 ### Reply Types
 
-| Reply | Behavior |
-|-------|----------|
-| `once` | Allow this specific call only |
+| Reply    | Behavior                                                       |
+| -------- | -------------------------------------------------------------- |
+| `once`   | Allow this specific call only                                  |
 | `always` | Allow and remember for future calls matching `always` patterns |
-| `reject` | Deny and cascade to all pending permissions in session |
+| `reject` | Deny and cascade to all pending permissions in session         |
 
 ---
 
@@ -480,7 +481,7 @@ Automatically denied by config rule. Includes matching rules for context.
 
 ```typescript
 class DeniedError extends Error {
-  ruleset: Ruleset  // Rules that caused denial
+  ruleset: Ruleset // Rules that caused denial
   message: "The user has specified a rule which prevents you from using this specific tool call..."
 }
 ```
@@ -508,6 +509,7 @@ function disabled(tools: string[], ruleset: Ruleset): Set<string> {
 ```
 
 This means:
+
 - `"bash": "deny"` → `bash` tool not available to model
 - `"bash": { "rm *": "deny" }` → `bash` tool available, but `rm` commands denied
 
@@ -523,7 +525,7 @@ The current `/tool/call` endpoint bypasses the permission system:
 // server/routes/session.ts:1088-1096
 const ctx: Tool.Context = {
   // ...
-  ask: async () => {},  // No-op - permissions bypassed
+  ask: async () => {}, // No-op - permissions bypassed
 }
 ```
 
@@ -554,11 +556,11 @@ const ctx: Tool.Context = {
 
 ### Permission Handling Options
 
-| Mode | Behavior | Use Case |
-|------|----------|----------|
-| **Bypass** | `ask: async () => {}` | Trusted external agents |
-| **Strict** | Full `PermissionNext.ask()` | Untrusted agents, user approval required |
-| **Pre-approved** | Session with pre-configured permissions | Automated pipelines |
+| Mode             | Behavior                                | Use Case                                 |
+| ---------------- | --------------------------------------- | ---------------------------------------- |
+| **Bypass**       | `ask: async () => {}`                   | Trusted external agents                  |
+| **Strict**       | Full `PermissionNext.ask()`             | Untrusted agents, user approval required |
+| **Pre-approved** | Session with pre-configured permissions | Automated pipelines                      |
 
 ---
 
@@ -609,7 +611,7 @@ BusEvent.define("permission.replied", {
 await ctx.ask({
   permission: "bash",
   patterns: ["npm install lodash"],
-  always: ["npm install*"],  // User can approve all npm installs
+  always: ["npm install*"], // User can approve all npm installs
   metadata: {
     reason: "Installing dependency",
     package: "lodash",

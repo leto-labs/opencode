@@ -1,9 +1,5 @@
 import { createSignal, onCleanup, createEffect, on, type Accessor } from "solid-js"
-import {
-  RealtimeSession,
-  RealtimeAgent,
-  OpenAIRealtimeWebRTC,
-} from "@openai/agents/realtime"
+import { RealtimeSession, RealtimeAgent, OpenAIRealtimeWebRTC } from "@openai/agents/realtime"
 import type { RealtimeItem } from "@openai/agents-realtime"
 import { useSDK } from "@/context/sdk"
 
@@ -33,10 +29,7 @@ export interface RealtimeConnectionConfig {
  * - Transcript storage (caller's responsibility)
  * - UI updates (caller's responsibility)
  */
-export function useRealtimeConnection(
-  sessionID: Accessor<string | undefined>,
-  config: RealtimeConnectionConfig,
-) {
+export function useRealtimeConnection(sessionID: Accessor<string | undefined>, config: RealtimeConnectionConfig) {
   const [status, setStatus] = createSignal<RealtimeStatus>("disconnected")
   const [error, setError] = createSignal<string | null>(null)
   const sdk = useSDK()

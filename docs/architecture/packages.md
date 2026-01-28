@@ -77,29 +77,29 @@ packages/opencode/src/
 
 **Session (`src/session/`)**
 
-| File | Purpose |
-|------|---------|
-| `index.ts` | Session CRUD: `Session.create()`, `Session.get()`, `Session.list()` |
-| `prompt.ts` | Agent loop: `SessionPrompt.prompt()` runs LLM + tools |
-| `transcript.ts` | Store messages for client-side inference |
-| `message-v2.ts` | Message/Part Zod schemas and types |
+| File            | Purpose                                                             |
+| --------------- | ------------------------------------------------------------------- |
+| `index.ts`      | Session CRUD: `Session.create()`, `Session.get()`, `Session.list()` |
+| `prompt.ts`     | Agent loop: `SessionPrompt.prompt()` runs LLM + tools               |
+| `transcript.ts` | Store messages for client-side inference                            |
+| `message-v2.ts` | Message/Part Zod schemas and types                                  |
 
 **Server (`src/server/`)**
 
-| Route File | Endpoints |
-|------------|-----------|
-| `session.ts` | `/session/*` - messages, transcripts, tool calls |
-| `file.ts` | `/file/*` - read, write, list files |
-| `project.ts` | `/project/*` - project management |
-| `pty.ts` | `/pty/*` - terminal sessions |
-| `provider.ts` | `/provider/*` - model providers |
+| Route File    | Endpoints                                        |
+| ------------- | ------------------------------------------------ |
+| `session.ts`  | `/session/*` - messages, transcripts, tool calls |
+| `file.ts`     | `/file/*` - read, write, list files              |
+| `project.ts`  | `/project/*` - project management                |
+| `pty.ts`      | `/pty/*` - terminal sessions                     |
+| `provider.ts` | `/provider/*` - model providers                  |
 
 **Agent (`src/agent/`)**
 
-| File | Purpose |
-|------|---------|
+| File       | Purpose                                  |
+| ---------- | ---------------------------------------- |
 | `agent.ts` | Agent configurations (build, plan, etc.) |
-| `prompt/` | System prompts per agent type |
+| `prompt/`  | System prompts per agent type            |
 
 #### Entry Points
 
@@ -148,12 +148,12 @@ packages/app/src/
 
 #### Key Contexts
 
-| Context | Purpose |
-|---------|---------|
-| `global-sdk.tsx` | Creates and provides SDK client |
-| `global-sync.tsx` | SSE subscription, stores synced data |
-| `voice-mode.tsx` | OpenAI Realtime API client for voice |
-| `local.tsx` | Local UI state (selected session, etc.) |
+| Context           | Purpose                                 |
+| ----------------- | --------------------------------------- |
+| `global-sdk.tsx`  | Creates and provides SDK client         |
+| `global-sync.tsx` | SSE subscription, stores synced data    |
+| `voice-mode.tsx`  | OpenAI Realtime API client for voice    |
+| `local.tsx`       | Local UI state (selected session, etc.) |
 
 #### Development
 
@@ -204,12 +204,12 @@ const result = await client.session.prompt({ sessionID, parts: [...] })
 
 #### Exports
 
-| Export Path | Purpose |
-|-------------|---------|
-| `@opencode-ai/sdk` | V1 SDK (legacy) |
-| `@opencode-ai/sdk/v2` | V2 SDK |
-| `@opencode-ai/sdk/v2/client` | Client factory |
-| `@opencode-ai/sdk/v2/server` | Server factory |
+| Export Path                  | Purpose         |
+| ---------------------------- | --------------- |
+| `@opencode-ai/sdk`           | V1 SDK (legacy) |
+| `@opencode-ai/sdk/v2`        | V2 SDK          |
+| `@opencode-ai/sdk/v2/client` | Client factory  |
+| `@opencode-ai/sdk/v2/server` | Server factory  |
 
 #### Regeneration
 
@@ -326,6 +326,7 @@ bun dev
 ```
 
 Environment variables:
+
 - `SLACK_BOT_TOKEN`
 - `SLACK_SIGNING_SECRET`
 - `SLACK_APP_TOKEN`
@@ -337,6 +338,7 @@ Environment variables:
 **Purpose:** IDE extensions
 
 Currently includes:
+
 - Zed Editor extension
 
 ---
@@ -353,14 +355,14 @@ import { Identifier } from "@opencode-ai/util/identifier"
 import { Binary } from "@opencode-ai/util/binary"
 ```
 
-| Module | Purpose |
-|--------|---------|
-| `error.ts` | `NamedError` class for typed errors |
-| `identifier.ts` | ULID-based ID generation |
-| `binary.ts` | Binary search utilities |
-| `array.ts` | Array utilities |
-| `path.ts` | Path utilities |
-| `retry.ts` | Retry logic |
+| Module          | Purpose                             |
+| --------------- | ----------------------------------- |
+| `error.ts`      | `NamedError` class for typed errors |
+| `identifier.ts` | ULID-based ID generation            |
+| `binary.ts`     | Binary search utilities             |
+| `array.ts`      | Array utilities                     |
+| `path.ts`       | Path utilities                      |
+| `retry.ts`      | Retry logic                         |
 
 ---
 
@@ -394,6 +396,7 @@ export default definePlugin({
 **Framework:** SolidStart
 
 Sub-packages:
+
 - `console/app` - Main UI
 - `console/core` - Core logic
 - `console/function` - Serverless functions
@@ -453,6 +456,7 @@ Sub-packages:
 ```
 
 Key dependencies:
+
 - `app` depends on `sdk`, `ui`, `util`
 - `desktop` depends on `app` (shares components)
 - `opencode` depends on `util`, `plugin`
