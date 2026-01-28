@@ -24,6 +24,7 @@ import { NotificationProvider } from "@/context/notification"
 import { ModelsProvider } from "@/context/models"
 import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { CommandProvider } from "@/context/command"
+import { VoiceModeProvider } from "@/context/voice-mode"
 import { LanguageProvider, useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { HighlightsProvider } from "@/context/highlights"
@@ -147,9 +148,11 @@ export function AppInterface(props: { defaultUrl?: string }) {
                         <FileProvider>
                           <PromptProvider>
                             <CommentsProvider>
-                              <Suspense fallback={<Loading />}>
-                                <Session />
-                              </Suspense>
+                              <VoiceModeProvider sessionID={p.params.id}>
+                                <Suspense fallback={<Loading />}>
+                                  <Session />
+                                </Suspense>
+                              </VoiceModeProvider>
                             </CommentsProvider>
                           </PromptProvider>
                         </FileProvider>
@@ -158,7 +161,7 @@ export function AppInterface(props: { defaultUrl?: string }) {
                   )}
                 />
               </Route>
-            </Router>
+              </Router>
           </GlobalSyncProvider>
         </GlobalSDKProvider>
       </ServerKey>

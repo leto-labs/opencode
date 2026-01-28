@@ -7,6 +7,9 @@ import { MessageV2 } from "../../session/message-v2"
 import { SessionPrompt } from "../../session/prompt"
 import { SessionCompaction } from "../../session/compaction"
 import { SessionRevert } from "../../session/revert"
+import { SessionTranscript } from "../../session/transcript"
+import { SessionClientSecret } from "../../session/client_secret"
+import { SessionTool } from "../../session/tool"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "../../session/todo"
@@ -934,6 +937,175 @@ export const SessionRoutes = lazy(() =>
           reply: c.req.valid("json").response,
         })
         return c.json(true)
+      },
+    )
+    // ===== Client-Side Inference Endpoints =====
+    // These endpoints support sessions where inference happens client-side
+    // (e.g., voice/realtime) and the server is used only for storage and tool execution.
+    .post(
+      "/:sessionID/transcript",
+      describeRoute({
+        summary: "Add transcript",
+        description:
+          "Add a user or assistant transcript to a session without triggering agent execution. Used for client-side inference sessions.",
+        operationId: "session.transcript.add",
+        responses: {
+          200: {
+            description: "Transcript added",
+            content: {
+              "application/json": {
+                schema: resolver(SessionTranscript.AddOutput),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator("json", SessionTranscript.AddInput.omit({ sessionID: true })),
+      async (c) => {
+        const { sessionID } = c.req.valid("param")
+        const body = c.req.valid("json")
+
+        try {
+          const result = await SessionTranscript.add({ ...body, sessionID })
+          return c.json(result)
+        } catch (err) {
+          if (err instanceof Error && err.message.includes("not found")) {
+            return c.json({ error: err.message }, { status: 404 })
+          }
+          throw err
+        }
+      },
+    )
+    .post(
+      "/:sessionID/client_secret",
+      describeRoute({
+        summary: "Create client secret",
+        description:
+          "Create a new OpenAI Realtime API ephemeral token for WebRTC connection. Requires OpenAI provider to be configured and session to exist.",
+        operationId: "session.client_secret.create",
+        responses: {
+          200: {
+            description: "Ephemeral session token",
+            content: {
+              "application/json": {
+                schema: resolver(SessionClientSecret.Output),
+              },
+            },
+          },
+          ...errors(400, 404, 500),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const { sessionID } = c.req.valid("param")
+
+        try {
+          const result = await SessionClientSecret.create({ sessionID })
+          return c.json(result)
+        } catch (err) {
+          if (err instanceof Error) {
+            if (err.message.includes("not found")) {
+              return c.json({ error: err.message }, { status: 404 })
+            }
+            if (err.message.includes("not configured")) {
+              return c.json({ error: err.message }, { status: 400 })
+            }
+          }
+          log.error("client_secret create error", { error: err })
+          return c.json({ error: "Failed to create client secret" }, { status: 500 })
+        }
+      },
+    )
+    .get(
+      "/:sessionID/client_secret",
+      describeRoute({
+        summary: "Get client secret",
+        description:
+          "Get the saved OpenAI Realtime API ephemeral token for a session. Returns null if no token exists or it has expired.",
+        operationId: "session.client_secret.get",
+        responses: {
+          200: {
+            description: "Ephemeral session token or null",
+            content: {
+              "application/json": {
+                schema: resolver(SessionClientSecret.Output.nullable()),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const { sessionID } = c.req.valid("param")
+
+        try {
+          const result = await SessionClientSecret.get(sessionID)
+          return c.json(result)
+        } catch (err) {
+          if (err instanceof Error && err.message.includes("not found")) {
+            return c.json({ error: err.message }, { status: 404 })
+          }
+          throw err
+        }
+      },
+    )
+    .post(
+      "/:sessionID/tool/call",
+      describeRoute({
+        summary: "Execute tool",
+        description:
+          "Execute a tool and return the result. Used for client-side inference sessions where the client relays tool calls from the provider.",
+        operationId: "session.tool.call",
+        responses: {
+          200: {
+            description: "Tool executed",
+            content: {
+              "application/json": {
+                schema: resolver(SessionTool.CallOutput),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator("json", SessionTool.CallInput.omit({ sessionID: true })),
+      async (c) => {
+        const { sessionID } = c.req.valid("param")
+        const body = c.req.valid("json")
+
+        try {
+          const result = await SessionTool.call({ ...body, sessionID })
+          return c.json(result)
+        } catch (err) {
+          if (err instanceof Error && err.message.includes("not found")) {
+            return c.json({ error: err.message }, { status: 404 })
+          }
+          throw err
+        }
       },
     ),
 )

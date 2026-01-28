@@ -73,6 +73,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.933.0",
+    "@openai/agents": "0.4.3",
     "@opencode-ai/plugin": "workspace:*",
     "@opencode-ai/script": "workspace:*",
     "@opencode-ai/sdk": "workspace:*",
