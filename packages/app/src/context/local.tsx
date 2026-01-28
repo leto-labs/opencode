@@ -9,9 +9,15 @@ import { useModels } from "@/context/models"
 
 export type ModelKey = { providerID: string; modelID: string }
 
+// Extended model type with optional client-side properties
+type ClientSideModelProps = {
+  clientSide?: boolean
+  voice?: boolean
+}
+
 const GPT_REALTIME_MODEL = {
   id: "gpt-realtime",
-  providerID: "openai-realtime",
+  providerID: "openai",
   name: "GPT Realtime",
   family: "gpt-realtime",
   api: {
@@ -43,6 +49,7 @@ const GPT_REALTIME_MODEL = {
     models: {},
   },
   clientSide: true,
+  voice: true,
   latest: false,
   variants: undefined,
 }
@@ -136,19 +143,20 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const isOpenAIConnected = createMemo(() => providers.connected().some((p) => p.id === "openai"))
 
       // Wrap models.list to include client-side models
-      const listWithClientSide = createMemo(() => {
-        const baseList = models.list()
+      type ModelWithClientSideProps = ReturnType<typeof models.list>[number] & ClientSideModelProps
+      const listWithClientSide = createMemo((): ModelWithClientSideProps[] => {
+        const baseList = models.list() as ModelWithClientSideProps[]
         if (!isOpenAIConnected()) return baseList
         // Add GPT Realtime model when OpenAI is connected
-        return [...baseList, GPT_REALTIME_MODEL]
+        return [...baseList, GPT_REALTIME_MODEL as unknown as ModelWithClientSideProps]
       })
 
       // Wrap models.find to handle client-side models
-      const findWithClientSide = (key: ModelKey) => {
+      const findWithClientSide = (key: ModelKey): ModelWithClientSideProps | undefined => {
         if (key.providerID === CLIENT_SIDE_PROVIDER_ID && key.modelID === CLIENT_SIDE_MODEL_ID) {
-          return isOpenAIConnected() ? GPT_REALTIME_MODEL : undefined
+          return isOpenAIConnected() ? (GPT_REALTIME_MODEL as unknown as ModelWithClientSideProps) : undefined
         }
-        return models.find(key)
+        return models.find(key) as ModelWithClientSideProps | undefined
       }
 
       const [ephemeral, setEphemeral] = createStore<{

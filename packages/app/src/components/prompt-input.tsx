@@ -934,6 +934,27 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       .catch(() => {})
   }
 
+  const startVoiceSession = async () => {
+    // If no session exists, create one first
+    if (!params.id) {
+      const session = await sdk.client.session
+        .create()
+        .then((x) => x.data ?? undefined)
+        .catch((err) => {
+          showToast({
+            title: language.t("prompt.toast.sessionCreateFailed.title"),
+            description: err instanceof Error ? err.message : language.t("common.requestFailed"),
+          })
+          return undefined
+        })
+      if (!session) return
+      navigate(`/${base64Encode(sdk.directory)}/session/${session.id}`)
+      // Wait a tick for navigation to complete before connecting
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    voiceMode.connect()
+  }
+
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
     const text = prompt
       .map((p) => ("content" in p ? p.content : ""))
@@ -2085,8 +2106,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         type="button"
                         variant="ghost"
                         class="size-6 text-green-500 hover:text-green-400 hover:bg-green-500/20"
-                        onClick={() => voiceMode.connect()}
-                        disabled={!params.id}
+                        onClick={() => startVoiceSession()}
                         aria-label="Start Realtime Session"
                       >
                         <Icon name="phone" class="size-4.5" />
