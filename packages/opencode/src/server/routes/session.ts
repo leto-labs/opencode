@@ -9,6 +9,7 @@ import { SessionCompaction } from "../../session/compaction"
 import { SessionRevert } from "../../session/revert"
 import { SessionTranscript } from "../../session/transcript"
 import { SessionClientSecret } from "../../session/client_secret"
+import { SessionTool } from "../../session/tool"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "../../session/todo"
@@ -18,10 +19,6 @@ import { Log } from "../../util/log"
 import { PermissionNext } from "@/permission/next"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
-import { Identifier } from "../../id/id"
-import { ToolRegistry } from "../../tool/registry"
-import type { Tool } from "../../tool/tool"
-import { Instance } from "../../project/instance"
 
 const log = Log.create({ service: "server" })
 
@@ -1082,13 +1079,7 @@ export const SessionRoutes = lazy(() =>
             description: "Tool executed",
             content: {
               "application/json": {
-                schema: resolver(
-                  z.object({
-                    callId: z.string(),
-                    result: z.any(),
-                    error: z.string().optional(),
-                  }),
-                ),
+                schema: resolver(SessionTool.CallOutput),
               },
             },
           },
@@ -1101,123 +1092,19 @@ export const SessionRoutes = lazy(() =>
           sessionID: z.string().meta({ description: "Session ID" }),
         }),
       ),
-      validator(
-        "json",
-        z.object({
-          toolName: z.string(),
-          callId: z.string(),
-          arguments: z.record(z.string(), z.any()),
-        }),
-      ),
+      validator("json", SessionTool.CallInput.omit({ sessionID: true })),
       async (c) => {
         const { sessionID } = c.req.valid("param")
-        const { toolName, callId, arguments: args } = c.req.valid("json")
-
-        // Verify session exists
-        const session = await Session.get(sessionID)
-        if (!session) {
-          return c.json({ error: "Session not found" }, { status: 404 })
-        }
-
-        // Find the tool
-        const allTools = await ToolRegistry.tools({ providerID: "openai", modelID: "gpt-4" })
-        const tool = allTools.find((t) => t.id === toolName)
-        if (!tool) {
-          return c.json({ callId, result: null, error: `Tool not found: ${toolName}` })
-        }
-
-        const startTime = Date.now()
-        const messageID = Identifier.ascending("message")
-
-        // Find the last user message to use as parentID
-        const messages = await Session.messages({ sessionID, limit: 10 })
-        const lastUserMsg = messages.reverse().find((m) => m.info.role === "user")
-        const parentID = lastUserMsg?.info.id ?? messageID
-
-        // Create assistant message to hold the tool call
-        const assistantMessage: MessageV2.Assistant = {
-          id: messageID,
-          role: "assistant",
-          sessionID,
-          time: { created: startTime },
-          parentID,
-          modelID: "client",
-          providerID: "client",
-          mode: "client",
-          agent: "client",
-          path: { cwd: Instance.directory, root: Instance.worktree },
-          cost: 0,
-          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-        }
-        await Session.updateMessage(assistantMessage)
-
-        // Create tool part (initially running)
-        const partID = Identifier.ascending("part")
-        const toolPart: MessageV2.ToolPart = {
-          id: partID,
-          sessionID,
-          messageID,
-          type: "tool",
-          callID: callId,
-          tool: toolName,
-          state: {
-            status: "running",
-            input: args,
-            time: { start: startTime },
-          },
-        }
-        await Session.updatePart(toolPart)
-
-        // Execute the tool
-        const abortController = new AbortController()
-        const ctx: Tool.Context = {
-          sessionID,
-          messageID,
-          agent: "client",
-          abort: abortController.signal,
-          callID: callId,
-          metadata: () => {},
-          ask: async () => {},
-        }
+        const body = c.req.valid("json")
 
         try {
-          const result = await tool.execute(args, ctx)
-          const endTime = Date.now()
-
-          // Update tool part with result
-          const completedPart: MessageV2.ToolPart = {
-            ...toolPart,
-            state: {
-              status: "completed",
-              input: args,
-              output: result.output,
-              title: result.title || toolName,
-              metadata: result.metadata,
-              time: { start: startTime, end: endTime },
-            },
-          }
-          await Session.updatePart(completedPart)
-          await Session.touch(sessionID)
-
-          return c.json({ callId, result: result.output })
+          const result = await SessionTool.call({ ...body, sessionID })
+          return c.json(result)
         } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : String(err)
-          const endTime = Date.now()
-
-          // Update tool part with error
-          const errorPart: MessageV2.ToolPart = {
-            ...toolPart,
-            state: {
-              status: "error",
-              input: args,
-              error: errorMessage,
-              time: { start: startTime, end: endTime },
-            },
+          if (err instanceof Error && err.message.includes("not found")) {
+            return c.json({ error: err.message }, { status: 404 })
           }
-          await Session.updatePart(errorPart)
-          await Session.touch(sessionID)
-
-          return c.json({ callId, result: null, error: errorMessage })
+          throw err
         }
       },
     ),
