@@ -230,6 +230,20 @@ export function useRealtimeConnection(sessionID: Accessor<string | undefined>, c
         return
       }
 
+      // Request microphone permission on mobile before WebRTC
+      try {
+        console.log("[realtime] requesting microphone permission")
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        console.log("[realtime] microphone permission granted")
+        // Immediately stop tracks - we just needed permission
+        stream.getTracks().forEach((track) => track.stop())
+      } catch (permError) {
+        console.error("[realtime] microphone permission error", permError)
+        setError("Microphone permission denied. Please grant access in settings.")
+        setStatus("error")
+        return
+      }
+
       // Fetch tools and system prompt in parallel
       const [toolDefinitions, instructions] = await Promise.all([fetchToolDefinitions(), fetchSystemPrompt()])
 
