@@ -35,11 +35,12 @@ The realtime architecture uses a **direct client connection** model where the we
 ┌──────────────────────┼───────────────────────────────────────────────┐
 │ OpenCode Server      │                                               │
 │  ┌───────────────────┴────────────────────────────────────────────┐  │
-│  │ Realtime Routes                                                │  │
-│  │ POST /realtime/:sessionID/token      → Ephemeral key gen       │  │
-│  │ POST /realtime/:sessionID/transcript → Persist transcripts     │  │
-│  │ POST /realtime/:sessionID/tool-call  → Execute tool            │  │
-│  │ GET  /realtime/:sessionID/tools      → List available tools    │  │
+│  │ Session Routes (session-scoped)                                │  │
+│  │ POST /session/:id/client_secret → Ephemeral key (cached)       │  │
+│  │ GET  /session/:id/client_secret → Get cached key               │  │
+│  │ POST /session/:id/transcript    → Persist transcripts          │  │
+│  │ POST /session/:id/tool/call     → Execute tool                 │  │
+│  │ GET  /session/:id/tools         → List available tools [TODO]  │  │
 │  └────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -98,11 +99,11 @@ The realtime architecture uses a **direct client connection** model where the we
 
 | Endpoint | Responsibility |
 |----------|----------------|
-| `POST /token` | Generate ephemeral key from main API key |
-| `POST /transcript` | Persist transcript parts to session |
-| `GET /transcript` | Retrieve transcript history |
-| `POST /tool-call` | Execute tool, return result |
-| `GET /tools` | List available tools for session |
+| `POST /session/:id/client_secret` | Generate ephemeral key (cached) |
+| `GET /session/:id/client_secret` | Get cached ephemeral key |
+| `POST /session/:id/transcript` | Persist transcript parts |
+| `GET /session/:id/message` | Retrieve message history |
+| `POST /session/:id/tool/call` | Execute tool, return result |
 
 ### OpenAI Realtime API
 
