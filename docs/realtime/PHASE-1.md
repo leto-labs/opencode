@@ -17,24 +17,28 @@ Add a voice mode button that connects to OpenAI Realtime API via WebRTC. Server 
 ## Implementation Summary
 
 ### Server
+
 Ephemeral key generation (refactored in Phase 3):
+
 - `POST /session/:id/client_secret` - Create new token
 - `GET /session/:id/client_secret` - Get cached token
 - Logic in `packages/opencode/src/session/client_secret.ts`
 
 ### Client
+
 - `VoiceModeProvider` - Manages WebRTC connection state
 - `OpenAIRealtimeWebRTC` transport with hidden audio element
 - Microphone button toggles connection
 
 ### Files Changed
-| File | Purpose |
-|------|---------|
+
+| File                                             | Purpose                  |
+| ------------------------------------------------ | ------------------------ |
 | `packages/opencode/src/session/client_secret.ts` | Ephemeral key management |
-| `packages/opencode/src/server/routes/session.ts` | client_secret endpoints |
-| `packages/app/src/context/voice-mode.tsx` | VoiceModeProvider |
-| `packages/app/src/app.tsx` | Provider wrapper |
-| `packages/app/src/components/prompt-input.tsx` | Microphone button |
+| `packages/opencode/src/server/routes/session.ts` | client_secret endpoints  |
+| `packages/app/src/context/voice-mode.tsx`        | VoiceModeProvider        |
+| `packages/app/src/app.tsx`                       | Provider wrapper         |
+| `packages/app/src/components/prompt-input.tsx`   | Microphone button        |
 
 ## Key Decisions
 

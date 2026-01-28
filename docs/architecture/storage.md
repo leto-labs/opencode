@@ -5,6 +5,7 @@ The storage module provides a simple JSON file-based persistence layer for OpenC
 ## Location
 
 Storage files are located at:
+
 ```
 ~/.local/share/opencode/storage/
 ```
@@ -81,6 +82,7 @@ const sessions = await Storage.list(["session", projectID])
 ## Locking
 
 Storage operations use file-based locking to prevent race conditions:
+
 - `read()` acquires a read lock
 - `write()` and `update()` acquire a write lock
 

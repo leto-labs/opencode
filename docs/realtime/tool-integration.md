@@ -194,11 +194,12 @@ Permissions work the same as text mode:
 await ctx.ask({
   permission: "bash",
   patterns: ["rm -rf /tmp/*"],
-  description: "Delete temporary files"
+  description: "Delete temporary files",
 })
 ```
 
 In realtime mode:
+
 1. Tool execution pauses at permission request
 2. Server sends permission request to client via HTTP response
 3. Client shows permission dialog

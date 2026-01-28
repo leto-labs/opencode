@@ -22,6 +22,7 @@ bun dev
 OpenCode is an open-source AI coding agent with a modular client/server architecture. The project supports multiple frontends (TUI, Web, Desktop) and multiple LLM providers.
 
 **Key Technologies:**
+
 - Runtime: Bun v1.2.12+
 - Server: Hono (with OpenAPI)
 - Client: SolidJS
@@ -75,6 +76,7 @@ packages/opencode/src/
 ```
 
 **Key Entry Points:**
+
 - CLI: `./bin/opencode` (yargs commands)
 - Server: `./src/server/server.ts` (Hono app)
 - Agent Loop: `./src/session/prompt.ts:loop()` (line 258+)
@@ -112,6 +114,7 @@ packages/sdk/js/src/
 ```
 
 **Usage:**
+
 ```typescript
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
 
@@ -152,6 +155,7 @@ Routes define their API contract using Hono + OpenAPI. The SDK is auto-generated
 ```
 
 Regenerate SDK after route changes:
+
 ```bash
 cd packages/opencode && bun dev generate
 cd packages/sdk/js && bun run build
@@ -162,11 +166,13 @@ See [architecture/adding-routes.md](architecture/adding-routes.md) for full guid
 ### 2. Two Inference Modes
 
 **Server-Side (Traditional):**
+
 ```
 Client → POST /session/:id/message → Server → LLM → Tool Calls → Response (SSE)
 ```
 
 **Client-Side (Realtime/Voice):**
+
 ```
 Client → OpenAI Realtime API (direct) → Audio Response
          ↓ async
@@ -247,19 +253,20 @@ cd packages/app && bun run test:e2e:local
 
 ### Key Files to Know
 
-| What | Where |
-|------|-------|
-| Server routes | `packages/opencode/src/server/routes/` |
-| Agent loop | `packages/opencode/src/session/prompt.ts:258` |
+| What            | Where                                         |
+| --------------- | --------------------------------------------- |
+| Server routes   | `packages/opencode/src/server/routes/`        |
+| Agent loop      | `packages/opencode/src/session/prompt.ts:258` |
 | Message schemas | `packages/opencode/src/session/message-v2.ts` |
-| Session CRUD | `packages/opencode/src/session/index.ts` |
-| SDK client | `packages/sdk/js/src/v2/client.ts` |
-| UI state | `packages/app/src/context/` |
-| Voice mode | `packages/app/src/context/voice-mode.tsx` |
+| Session CRUD    | `packages/opencode/src/session/index.ts`      |
+| SDK client      | `packages/sdk/js/src/v2/client.ts`            |
+| UI state        | `packages/app/src/context/`                   |
+| Voice mode      | `packages/app/src/context/voice-mode.tsx`     |
 
 ## Documentation Index
 
 ### Architecture
+
 - [packages.md](architecture/packages.md) - Detailed package breakdown
 - [patterns.md](architecture/patterns.md) - Architecture patterns & conventions
 - [message-flow.md](architecture/message-flow.md) - Message flow & inference modes
@@ -267,10 +274,11 @@ cd packages/app && bun run test:e2e:local
 - [tool-flow.md](architecture/tool-flow.md) - Tool execution flow
 
 ### Features
+
 - [realtime/](realtime/) - Voice/Realtime integration docs
   - [README.md](realtime/README.md) - Overview
   - [architecture.md](realtime/architecture.md) - Realtime system design
-  - [PHASE-*.md](realtime/) - Implementation phases
+  - [PHASE-\*.md](realtime/) - Implementation phases
 
 ## Contributing
 

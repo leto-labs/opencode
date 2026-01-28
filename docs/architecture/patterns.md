@@ -64,13 +64,13 @@ export namespace SessionTranscript {
 
 ### Naming Convention
 
-| Namespace | Location | Purpose |
-|-----------|----------|---------|
-| `Session` | `src/session/index.ts` | Session CRUD |
-| `SessionPrompt` | `src/session/prompt.ts` | Server-side inference |
+| Namespace           | Location                    | Purpose                       |
+| ------------------- | --------------------------- | ----------------------------- |
+| `Session`           | `src/session/index.ts`      | Session CRUD                  |
+| `SessionPrompt`     | `src/session/prompt.ts`     | Server-side inference         |
 | `SessionTranscript` | `src/session/transcript.ts` | Client-side inference storage |
-| `SessionRevert` | `src/session/revert.ts` | Message revert |
-| `MessageV2` | `src/session/message-v2.ts` | Message schemas |
+| `SessionRevert`     | `src/session/revert.ts`     | Message revert                |
+| `MessageV2`         | `src/session/message-v2.ts` | Message schemas               |
 
 ---
 
@@ -145,6 +145,7 @@ const result = await client.session.transcript.add({
 Format: `{resource}.{action}` or `{resource}.{subresource}.{action}`
 
 Examples:
+
 - `session.list` → `client.session.list()`
 - `session.transcript.add` → `client.session.transcript.add()`
 - `file.read` → `client.file.read()`
@@ -188,7 +189,7 @@ const stream = new ReadableStream({
     const unsub = Bus.subscribe(MessageV2.Event.Updated, (event) => {
       controller.enqueue(`data: ${JSON.stringify(event)}\n\n`)
     })
-  }
+  },
 })
 
 // Client receives
@@ -217,11 +218,17 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
     const [status, setStatus] = createSignal<VoiceStatus>("disconnected")
 
     // Define methods
-    const connect = async () => { /* ... */ }
-    const disconnect = () => { /* ... */ }
+    const connect = async () => {
+      /* ... */
+    }
+    const disconnect = () => {
+      /* ... */
+    }
 
     // Cleanup on unmount
-    onCleanup(() => { /* cleanup */ })
+    onCleanup(() => {
+      /* cleanup */
+    })
 
     // Return public API
     return {
@@ -249,12 +256,12 @@ console.log(voiceMode.status())
 
 ### Key Contexts
 
-| Context | Purpose |
-|---------|---------|
-| `GlobalSDK` | SDK client instance |
+| Context      | Purpose                       |
+| ------------ | ----------------------------- |
+| `GlobalSDK`  | SDK client instance           |
 | `GlobalSync` | SSE subscription, synced data |
-| `VoiceMode` | Realtime voice client |
-| `Local` | Local UI state |
+| `VoiceMode`  | Realtime voice client         |
+| `Local`      | Local UI state                |
 
 ---
 
@@ -268,9 +275,9 @@ IDs are generated using ULID-based identifiers with type prefixes.
 import { Identifier } from "../id/id"
 
 // Generate ascending IDs (sortable by time)
-const messageID = Identifier.ascending("message")  // "msg_01HGX..."
-const partID = Identifier.ascending("part")        // "prt_01HGX..."
-const sessionID = Identifier.ascending("session")  // "ses_01HGX..."
+const messageID = Identifier.ascending("message") // "msg_01HGX..."
+const partID = Identifier.ascending("part") // "prt_01HGX..."
+const sessionID = Identifier.ascending("session") // "ses_01HGX..."
 ```
 
 ### Schema Validation
@@ -278,18 +285,18 @@ const sessionID = Identifier.ascending("session")  // "ses_01HGX..."
 ```typescript
 // Validate ID format in Zod schemas
 const MyInput = z.object({
-  sessionID: Identifier.schema("session"),  // Must start with "ses_"
+  sessionID: Identifier.schema("session"), // Must start with "ses_"
   messageID: Identifier.schema("message").optional(),
 })
 ```
 
 ### Prefixes
 
-| Prefix | Type |
-|--------|------|
-| `ses_` | Session |
-| `msg_` | Message |
-| `prt_` | Part |
+| Prefix | Type     |
+| ------ | -------- |
+| `ses_` | Session  |
+| `msg_` | Message  |
+| `prt_` | Part     |
 | `prv_` | Provider |
 
 ---
@@ -301,6 +308,7 @@ Client generates IDs before sending to server to enable optimistic UI updates.
 ### Problem
 
 Without optimistic updates:
+
 1. Client sends message
 2. Server creates message with new ID
 3. SSE sends `message.created` event
@@ -316,14 +324,14 @@ const partID = Identifier.ascending("part")
 // Immediately add to UI (optimistic)
 addMessageToStore({
   id: messageID,
-  parts: [{ id: partID, text: "..." }]
+  parts: [{ id: partID, text: "..." }],
 })
 
 // Send to server with same ID
 await client.session.transcript.add({
   sessionID,
   messageID,
-  parts: [{ id: partID, type: "text", text: "..." }]
+  parts: [{ id: partID, type: "text", text: "..." }],
 })
 
 // Server uses provided ID (no duplicate)
@@ -419,7 +427,7 @@ Operations are scoped to a project directory for isolation.
 ```typescript
 const client = createOpencodeClient({
   baseUrl: "http://localhost:4096",
-  directory: "/path/to/project",  // All operations scoped to this
+  directory: "/path/to/project", // All operations scoped to this
 })
 ```
 
@@ -457,10 +465,10 @@ const stream = new ReadableStream({
     const unsub = Bus.subscribe(event, (data) => {
       controller.enqueue(`data: ${JSON.stringify(data)}\n\n`)
     })
-  }
+  },
 })
 return new Response(stream, {
-  headers: { "Content-Type": "text/event-stream" }
+  headers: { "Content-Type": "text/event-stream" },
 })
 ```
 
@@ -485,15 +493,15 @@ for await (const event of events) {
 
 ## Summary
 
-| Pattern | Purpose | Key Files |
-|---------|---------|-----------|
-| Namespace | Organize business logic | `src/session/*.ts` |
-| SDK Generation | Type-safe API client | Routes → OpenAPI → SDK |
-| Event Bus | Decoupled communication | `src/bus/` |
-| Context Provider | SolidJS state management | `packages/app/src/context/` |
-| Identifier | Sortable unique IDs | `src/id/id.ts` |
-| Optimistic Update | Prevent duplicate UI | Client-generated IDs |
-| Validation | Runtime type checking | `fn()` helper, Zod |
-| Named Error | Typed error handling | `NamedError` class |
-| Directory Scope | Project isolation | `x-opencode-directory` header |
-| Async Iteration | Stream handling | SSE subscriptions |
+| Pattern           | Purpose                  | Key Files                     |
+| ----------------- | ------------------------ | ----------------------------- |
+| Namespace         | Organize business logic  | `src/session/*.ts`            |
+| SDK Generation    | Type-safe API client     | Routes → OpenAPI → SDK        |
+| Event Bus         | Decoupled communication  | `src/bus/`                    |
+| Context Provider  | SolidJS state management | `packages/app/src/context/`   |
+| Identifier        | Sortable unique IDs      | `src/id/id.ts`                |
+| Optimistic Update | Prevent duplicate UI     | Client-generated IDs          |
+| Validation        | Runtime type checking    | `fn()` helper, Zod            |
+| Named Error       | Typed error handling     | `NamedError` class            |
+| Directory Scope   | Project isolation        | `x-opencode-directory` header |
+| Async Iteration   | Stream handling          | SSE subscriptions             |

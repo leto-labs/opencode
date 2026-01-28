@@ -28,11 +28,13 @@ Enable the voice assistant to execute OpenCode tools. When OpenAI generates a fu
 ## Tasks
 
 ### Server (Existing infrastructure from Phase 2)
+
 - [x] `POST /session/:id/tool/call` endpoint
 - [ ] `GET /session/:id/tools` - List available tools for session
 - [ ] Tool definition format for OpenAI Realtime
 
 ### Client
+
 - [ ] Fetch tools on connect
 - [ ] Configure tools in realtime session
 - [ ] Handle `function_call` events from OpenAI
@@ -45,13 +47,14 @@ Enable the voice assistant to execute OpenCode tools. When OpenAI generates a fu
 ### 1. Tool Definitions Endpoint
 
 Following the module pattern, create `session/tools.ts`:
+
 ```typescript
 // packages/opencode/src/session/tools.ts
 export namespace SessionTools {
   export async function list(sessionID: string) {
     // Get tools available for this session
     const tools = await Tool.list()
-    return tools.map(t => ({
+    return tools.map((t) => ({
       type: "function",
       name: t.name,
       description: t.description,
@@ -62,11 +65,13 @@ export namespace SessionTools {
 ```
 
 Route in `routes/session.ts`:
+
 ```typescript
 GET /session/:sessionID/tools → SessionTools.list(sessionID)
 ```
 
 ### 2. Client Tool Handler
+
 ```typescript
 // In useRealtimeConnection.ts or voice-mode.tsx
 session.on("function_call", async (call) => {
@@ -90,6 +95,7 @@ session.on("function_call", async (call) => {
 ```
 
 ### 3. Tool Configuration on Connect
+
 ```typescript
 // Fetch and configure tools when connecting
 const { tools } = await sdk.client.session.tools({ sessionID })

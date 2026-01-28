@@ -9,11 +9,13 @@ Production-ready voice mode with proper security, error handling, and UX polish.
 ## Tasks
 
 ### Ephemeral Keys (DONE in Phase 3)
+
 - [x] Session-scoped token generation
 - [x] Server-side token caching with TTL
 - [x] Token reuse within TTL window
 
 ### Remaining Work
+
 - [ ] Token refresh on expiry (client-side)
 - [ ] Graceful reconnection on token expiry
 - [ ] Rate limiting token generation

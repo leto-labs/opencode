@@ -6,12 +6,12 @@ This document explains the context and state management patterns used in the Ope
 
 ### Reactivity Model
 
-| Aspect | React | SolidJS |
-|--------|-------|---------|
-| Re-renders | Entire component re-renders | Only affected DOM nodes update |
-| State access | `useState` returns value directly | `createSignal` returns getter function |
-| Effects | Run after render, with deps array | Run immediately, auto-track dependencies |
-| Props | Destructure freely | Must access via `props.x` (or use `splitProps`) |
+| Aspect       | React                             | SolidJS                                         |
+| ------------ | --------------------------------- | ----------------------------------------------- |
+| Re-renders   | Entire component re-renders       | Only affected DOM nodes update                  |
+| State access | `useState` returns value directly | `createSignal` returns getter function          |
+| Effects      | Run after render, with deps array | Run immediately, auto-track dependencies        |
+| Props        | Destructure freely                | Must access via `props.x` (or use `splitProps`) |
 
 ```typescript
 // React
@@ -47,7 +47,7 @@ SolidJS stores are like Immer-wrapped objects with fine-grained reactivity:
 ```typescript
 // React: Need to spread/copy for immutability
 const [state, setState] = useState({ user: { name: "Leo" } })
-setState(prev => ({ ...prev, user: { ...prev.user, name: "New" } }))
+setState((prev) => ({ ...prev, user: { ...prev.user, name: "New" } }))
 
 // SolidJS: Direct path updates, fine-grained reactivity
 const [store, setStore] = createStore({ user: { name: "Leo" } })
@@ -105,11 +105,11 @@ export function createSimpleContext<T, Props extends Record<string, any>>(input:
 
 ### Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `name` | `string` | required | Context name for error messages |
-| `init` | `(props: Props) => T` | required | Factory function that creates the context value |
-| `gate` | `boolean` | `true` | Whether to wait for `ready` before rendering children |
+| Parameter | Type                  | Default  | Description                                           |
+| --------- | --------------------- | -------- | ----------------------------------------------------- |
+| `name`    | `string`              | required | Context name for error messages                       |
+| `init`    | `(props: Props) => T` | required | Factory function that creates the context value       |
+| `gate`    | `boolean`             | `true`   | Whether to wait for `ready` before rendering children |
 
 ### Return Value
 
@@ -127,11 +127,13 @@ The helper returns an object with two properties:
 The `gate` mechanism provides a way to delay rendering children until the context is ready (e.g., data is loaded from storage or an async operation completes).
 
 **When `gate: true` (default):**
+
 1. The `init` function is called immediately
 2. The helper looks for a `ready` property on the returned value
 3. Children are only rendered when `ready` is truthy (or undefined)
 
 **The `ready` property can be:**
+
 - `undefined` → Children render immediately
 - `boolean` → Children render when `true`
 - `Accessor<boolean>` (signal getter) → Children render when signal returns `true`
@@ -140,7 +142,7 @@ The `gate` mechanism provides a way to delay rendering children until the contex
 // Example: Context with async initialization
 export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
-  gate: true,  // Wait for ready
+  gate: true, // Wait for ready
   init: () => {
     const [data, setData] = createSignal(null)
     const [ready, setReady] = createSignal(false)
@@ -149,15 +151,16 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     onMount(async () => {
       const result = await fetchData()
       setData(result)
-      setReady(true)  // Now children will render
+      setReady(true) // Now children will render
     })
 
-    return { data, ready }  // ready is a signal getter
+    return { data, ready } // ready is a signal getter
   },
 })
 ```
 
 **When `gate: false`:**
+
 - Children render immediately
 - The `ready` property is ignored
 - Useful for contexts that don't need async initialization
@@ -165,7 +168,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
 ```typescript
 export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleContext({
   name: "VoiceMode",
-  gate: false,  // Don't block rendering
+  gate: false, // Don't block rendering
   init: (props: { sessionID?: string }) => {
     // Context value available immediately, connection happens async
     return { status, connect, disconnect }
@@ -176,6 +179,7 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
 ### TypeScript Generics
 
 The helper uses two type parameters:
+
 - `T`: The type of the context value returned by `init`
 - `Props`: The type of props passed to the provider (extends `Record<string, any>`)
 
@@ -197,9 +201,9 @@ const { use, provider } = createSimpleContext<MyContextValue, MyProviderProps>({
     const [count, setCount] = createSignal(props.initialCount)
     return {
       count,
-      increment: () => setCount(c => c + 1)
+      increment: () => setCount((c) => c + 1),
     }
-  }
+  },
 })
 
 // Usage:
@@ -213,7 +217,7 @@ The `use()` function throws a descriptive error if called outside the provider:
 
 ```typescript
 // This will throw: "Counter context must be used within a context provider"
-const value = useCounter()  // Called without <CounterProvider> ancestor
+const value = useCounter() // Called without <CounterProvider> ancestor
 ```
 
 ### Key Features Summary
@@ -293,6 +297,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 ```
 
 **Why global?**
+
 - Single SSE connection for all events (efficient)
 - Shared authentication/configuration
 - Routes events to appropriate directory handlers
@@ -327,6 +332,7 @@ function createGlobalSync() {
 ```
 
 **Why this pattern?**
+
 - Single SSE connection, multiple data stores
 - Sidebar needs data from ALL directories (session lists)
 - Efficient: shares infrastructure, lazy-creates stores
@@ -348,7 +354,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     const client = createMemo(() =>
       createOpencodeClient({
         baseUrl: globalSDK.url,
-        directory: props.directory,  // All requests include this header
+        directory: props.directory, // All requests include this header
       }),
     )
 
@@ -358,6 +364,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
 ```
 
 **Why directory-scoped?**
+
 - API calls need directory context (header)
 - State is isolated per project
 - Cleanup when leaving directory
@@ -372,7 +379,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
 // PromptProvider - Session-scoped with LRU cache
 export const { use: usePrompt, provider: PromptProvider } = createSimpleContext({
   name: "Prompt",
-  gate: false,  // Don't wait for ready (cache handles it)
+  gate: false, // Don't wait for ready (cache handles it)
   init: () => {
     const params = useParams()
     const cache = new Map<string, PromptCacheEntry>()
@@ -424,6 +431,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
 ```
 
 **Why session-scoped with caching?**
+
 - Prompt state persists when switching sessions
 - LRU eviction prevents memory bloat
 - `createRoot` allows disposing reactive contexts
@@ -461,8 +469,12 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
       }
     })
 
-    const connect = async () => { /* ... */ }
-    const disconnect = () => { /* ... */ }
+    const connect = async () => {
+      /* ... */
+    }
+    const disconnect = () => {
+      /* ... */
+    }
 
     return { status, connect, disconnect }
   },
@@ -470,6 +482,7 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
 ```
 
 **Why pure session-scoped?**
+
 - WebRTC connections are expensive (audio streams, network)
 - No need to keep multiple sessions "warm"
 - Component lifecycle handles connect/disconnect automatically
@@ -479,13 +492,13 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
 
 ## Choosing the Right Pattern
 
-| Need | Pattern | Example |
-|------|---------|---------|
-| Shared infrastructure (SSE, auth) | Global Singleton | `GlobalSDKProvider` |
-| Multi-project visibility (sidebar) | Multi-Instance Manager | `GlobalSyncProvider` |
-| Project-specific API calls | Directory-Scoped | `SDKProvider` |
-| State persists across session switches | Session + Cache | `PromptProvider` |
-| Expensive resources per session | Pure Session-Scoped | `VoiceModeProvider` |
+| Need                                   | Pattern                | Example              |
+| -------------------------------------- | ---------------------- | -------------------- |
+| Shared infrastructure (SSE, auth)      | Global Singleton       | `GlobalSDKProvider`  |
+| Multi-project visibility (sidebar)     | Multi-Instance Manager | `GlobalSyncProvider` |
+| Project-specific API calls             | Directory-Scoped       | `SDKProvider`        |
+| State persists across session switches | Session + Cache        | `PromptProvider`     |
+| Expensive resources per session        | Pure Session-Scoped    | `VoiceModeProvider`  |
 
 ### Decision Tree
 
@@ -561,7 +574,7 @@ onMount(() => {
 // Create isolated reactive scope with manual disposal
 const entry = createRoot((dispose) => ({
   value: createSession(id),
-  dispose,  // Call this to cleanup all effects inside
+  dispose, // Call this to cleanup all effects inside
 }))
 
 // Later: cleanup
@@ -574,12 +587,12 @@ entry.dispose()
 
 Based on this analysis, `VoiceModeProvider` should be **Pure Session-Scoped**:
 
-| Factor | Assessment |
-|--------|------------|
-| Resource cost | High (WebRTC, audio) |
-| Multi-session visibility needed? | No |
-| State persistence across switches? | No (fresh connection per session) |
-| Reconnection acceptable? | Yes (1-2s delay is fine for voice) |
+| Factor                             | Assessment                         |
+| ---------------------------------- | ---------------------------------- |
+| Resource cost                      | High (WebRTC, audio)               |
+| Multi-session visibility needed?   | No                                 |
+| State persistence across switches? | No (fresh connection per session)  |
+| Reconnection acceptable?           | Yes (1-2s delay is fine for voice) |
 
 **Recommended placement**: Inside Session Route, as a sibling to `PromptProvider`
 
@@ -602,6 +615,7 @@ Based on this analysis, `VoiceModeProvider` should be **Pure Session-Scoped**:
 ```
 
 This eliminates all the complex session-tracking logic (`connectedSessionID`, `lastConnectingSession`, effects for session switching) because:
+
 - Mount → Connect (if client-side model)
 - Unmount → Disconnect
 - New session = new provider instance = clean slate
@@ -610,10 +624,10 @@ This eliminates all the complex session-tracking logic (`connectedSessionID`, `l
 
 ## Summary
 
-| Pattern | Lifecycle | Internal State | Use Case |
-|---------|-----------|----------------|----------|
-| Global Singleton | App lifetime | Single store | Shared infrastructure |
-| Multi-Instance Manager | App lifetime | Map of stores | Sidebar visibility |
-| Directory-Scoped | Directory route | Single store | Project-specific API |
-| Session + Cache | Session route | LRU cache of stores | Persisted UI state |
-| Pure Session-Scoped | Session route | Single instance | Expensive resources |
+| Pattern                | Lifecycle       | Internal State      | Use Case              |
+| ---------------------- | --------------- | ------------------- | --------------------- |
+| Global Singleton       | App lifetime    | Single store        | Shared infrastructure |
+| Multi-Instance Manager | App lifetime    | Map of stores       | Sidebar visibility    |
+| Directory-Scoped       | Directory route | Single store        | Project-specific API  |
+| Session + Cache        | Session route   | LRU cache of stores | Persisted UI state    |
+| Pure Session-Scoped    | Session route   | Single instance     | Expensive resources   |

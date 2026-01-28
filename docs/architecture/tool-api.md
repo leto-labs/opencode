@@ -13,20 +13,23 @@ POST /session/{sessionID}/tool/call
 Execute a tool within the context of an existing session.
 
 **Request Headers:**
+
 ```
 Content-Type: application/json
 ```
 
 **Request Body:**
+
 ```typescript
 {
-  toolName: string              // Tool identifier
-  callId: string                // Unique call ID for correlation
+  toolName: string // Tool identifier
+  callId: string // Unique call ID for correlation
   arguments: Record<string, any> // Tool-specific parameters
 }
 ```
 
 **Response:**
+
 ```typescript
 {
   callId: string                // Echoed back for correlation
@@ -36,6 +39,7 @@ Content-Type: application/json
 ```
 
 **Status Codes:**
+
 - `200` - Tool executed (check `error` field for failures)
 - `404` - Session not found
 
@@ -48,6 +52,7 @@ Content-Type: application/json
 Read file contents with optional line range.
 
 **Parameters:**
+
 ```typescript
 {
   filePath: string              // Absolute or relative path
@@ -57,6 +62,7 @@ Read file contents with optional line range.
 ```
 
 **Response:**
+
 ```typescript
 {
   title: string                 // Relative path from worktree
@@ -71,6 +77,7 @@ Read file contents with optional line range.
 ```
 
 **Output Format:**
+
 ```
 <file>
 00001| first line
@@ -81,11 +88,13 @@ Read file contents with optional line range.
 ```
 
 **Limits:**
+
 - Max 2000 lines per call
 - Max 50KB per call
 - Lines truncated at 2000 characters
 
 **Binary Handling:**
+
 - Images (PNG, JPG, etc.): Returned as base64 attachment
 - PDFs: Returned as base64 attachment
 - Binary files: Error thrown
@@ -97,26 +106,29 @@ Read file contents with optional line range.
 Create or overwrite a file.
 
 **Parameters:**
+
 ```typescript
 {
-  filePath: string              // Absolute or relative path
-  content: string               // File content
+  filePath: string // Absolute or relative path
+  content: string // File content
 }
 ```
 
 **Response:**
+
 ```typescript
 {
-  title: string                 // Relative path
-  output: string                // Success message
+  title: string // Relative path
+  output: string // Success message
   metadata: {
-    path: string                // Absolute path
-    created: boolean            // Whether file was created (vs overwritten)
+    path: string // Absolute path
+    created: boolean // Whether file was created (vs overwritten)
   }
 }
 ```
 
 **Behavior:**
+
 - Creates parent directories if needed
 - Overwrites existing files without warning
 - Preserves file permissions
@@ -128,27 +140,30 @@ Create or overwrite a file.
 Edit a file using search/replace.
 
 **Parameters:**
+
 ```typescript
 {
-  filePath: string              // File to edit
-  old_string: string            // Text to find
-  new_string: string            // Replacement text
+  filePath: string // File to edit
+  old_string: string // Text to find
+  new_string: string // Replacement text
 }
 ```
 
 **Response:**
+
 ```typescript
 {
-  title: string                 // Relative path
-  output: string                // Success/failure message
+  title: string // Relative path
+  output: string // Success/failure message
   metadata: {
-    applied: boolean            // Whether edit was applied
-    occurrences: number         // Number of replacements
+    applied: boolean // Whether edit was applied
+    occurrences: number // Number of replacements
   }
 }
 ```
 
 **Behavior:**
+
 - Exact string matching (no regex)
 - Single occurrence replaced per call
 - Error if `old_string` not found
@@ -161,6 +176,7 @@ Edit a file using search/replace.
 Execute a shell command.
 
 **Parameters:**
+
 ```typescript
 {
   command: string               // Command to execute
@@ -169,6 +185,7 @@ Execute a shell command.
 ```
 
 **Response:**
+
 ```typescript
 {
   title: string                 // Truncated command
@@ -182,12 +199,14 @@ Execute a shell command.
 ```
 
 **Behavior:**
+
 - Runs in project working directory
 - Inherits environment variables
 - Kills process on timeout
 - stderr merged into stdout
 
 **Limits:**
+
 - Default timeout: 30 seconds
 - Output truncated per standard limits
 
@@ -198,6 +217,7 @@ Execute a shell command.
 Find files matching a pattern.
 
 **Parameters:**
+
 ```typescript
 {
   pattern: string               // Glob pattern (e.g., "**/*.ts")
@@ -206,18 +226,20 @@ Find files matching a pattern.
 ```
 
 **Response:**
+
 ```typescript
 {
-  title: string                 // Pattern searched
-  output: string                // Matched file paths, one per line
+  title: string // Pattern searched
+  output: string // Matched file paths, one per line
   metadata: {
-    count: number               // Number of matches
-    truncated: boolean          // Whether results truncated
+    count: number // Number of matches
+    truncated: boolean // Whether results truncated
   }
 }
 ```
 
 **Pattern Examples:**
+
 - `*.ts` - TypeScript files in current dir
 - `**/*.ts` - TypeScript files recursively
 - `src/**/*.{ts,tsx}` - TS/TSX files in src
@@ -230,6 +252,7 @@ Find files matching a pattern.
 Search file contents.
 
 **Parameters:**
+
 ```typescript
 {
   pattern: string               // Regex pattern
@@ -239,25 +262,28 @@ Search file contents.
 ```
 
 **Response:**
+
 ```typescript
 {
-  title: string                 // Search summary
-  output: string                // Matching lines with context
+  title: string // Search summary
+  output: string // Matching lines with context
   metadata: {
-    matchCount: number          // Number of matches
-    fileCount: number           // Files with matches
+    matchCount: number // Number of matches
+    fileCount: number // Files with matches
     truncated: boolean
   }
 }
 ```
 
 **Output Format:**
+
 ```
 path/to/file.ts:42: matching line content
 path/to/file.ts:43: context line
 ```
 
 **Behavior:**
+
 - Uses ripgrep for performance
 - Respects .gitignore
 - Case-insensitive by default
@@ -269,6 +295,7 @@ path/to/file.ts:43: context line
 Fetch and process web content.
 
 **Parameters:**
+
 ```typescript
 {
   url: string                   // URL to fetch
@@ -277,10 +304,11 @@ Fetch and process web content.
 ```
 
 **Response:**
+
 ```typescript
 {
-  title: string                 // URL fetched
-  output: string                // Processed content
+  title: string // URL fetched
+  output: string // Processed content
   metadata: {
     statusCode: number
     contentType: string
@@ -290,6 +318,7 @@ Fetch and process web content.
 ```
 
 **Behavior:**
+
 - Converts HTML to markdown
 - Follows redirects
 - Respects robots.txt
@@ -302,25 +331,28 @@ Fetch and process web content.
 Search the web.
 
 **Parameters:**
+
 ```typescript
 {
-  query: string                 // Search query
+  query: string // Search query
 }
 ```
 
 **Response:**
+
 ```typescript
 {
-  title: string                 // Query
-  output: string                // Search results as markdown
+  title: string // Query
+  output: string // Search results as markdown
   metadata: {
     resultCount: number
-    provider: string            // "opencode" | "exa"
+    provider: string // "opencode" | "exa"
   }
 }
 ```
 
 **Availability:**
+
 - Requires `opencode` provider OR `OPENCODE_ENABLE_EXA` flag
 
 ---
@@ -330,13 +362,15 @@ Search the web.
 Apply a unified diff patch (used for GPT models).
 
 **Parameters:**
+
 ```typescript
 {
-  patch: string                 // Unified diff format
+  patch: string // Unified diff format
 }
 ```
 
 **Response:**
+
 ```typescript
 {
   title: string
@@ -359,6 +393,7 @@ Apply a unified diff patch (used for GPT models).
 Ask the user a question (interactive).
 
 **Parameters:**
+
 ```typescript
 {
   question: string              // Question text
@@ -367,6 +402,7 @@ Ask the user a question (interactive).
 ```
 
 **Response:**
+
 ```typescript
 {
   title: string
@@ -386,18 +422,20 @@ Ask the user a question (interactive).
 Create a subtask for parallel execution.
 
 **Parameters:**
+
 ```typescript
 {
-  description: string           // Task description
-  prompt: string                // Task prompt
+  description: string // Task description
+  prompt: string // Task prompt
 }
 ```
 
 **Response:**
+
 ```typescript
 {
   title: string
-  output: string                // Task result
+  output: string // Task result
   metadata: {
     taskId: string
     status: "completed" | "failed"
@@ -414,10 +452,11 @@ Read the todo list.
 **Parameters:** None
 
 **Response:**
+
 ```typescript
 {
   title: "Todo List"
-  output: string                // Todo items as markdown
+  output: string // Todo items as markdown
   metadata: {
     itemCount: number
   }
@@ -431,17 +470,19 @@ Read the todo list.
 Write/update the todo list.
 
 **Parameters:**
+
 ```typescript
 {
-  content: string               // New todo content (markdown)
+  content: string // New todo content (markdown)
 }
 ```
 
 **Response:**
+
 ```typescript
 {
   title: "Todo Updated"
-  output: string                // Confirmation
+  output: string // Confirmation
   metadata: {
     itemCount: number
   }
@@ -455,6 +496,7 @@ Write/update the todo list.
 Load and execute a skill workflow.
 
 **Parameters:**
+
 ```typescript
 {
   skill: string                 // Skill name/path
@@ -463,10 +505,11 @@ Load and execute a skill workflow.
 ```
 
 **Response:**
+
 ```typescript
 {
-  title: string                 // Skill name
-  output: string                // Skill output
+  title: string // Skill name
+  output: string // Skill output
   metadata: {
     skillPath: string
   }
@@ -514,16 +557,19 @@ When tool execution fails:
 All tools apply automatic output truncation via `Truncate.output()`:
 
 **Limits:**
+
 - Max lines: 2000
 - Max bytes: 50KB (51,200 bytes)
 
 **Behavior:**
+
 1. Count lines and bytes
 2. Stop at first limit hit
 3. Save full output to temp file
 4. Return truncated output with message
 
 **Truncation Message:**
+
 ```
 (Output truncated at 50KB. Full output saved to [path]. Use grep/read with offset to view more.)
 ```
@@ -540,12 +586,13 @@ interface FilePart {
   sessionID: string
   messageID: string
   type: "file"
-  mime: string                  // MIME type (e.g., "image/png")
-  url: string                   // data:mime;base64,... or file:// URL
+  mime: string // MIME type (e.g., "image/png")
+  url: string // data:mime;base64,... or file:// URL
 }
 ```
 
 **Supported by:**
+
 - `read` tool (images, PDFs)
 
 ---
