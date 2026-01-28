@@ -23,6 +23,95 @@ export namespace SessionTool {
   const log = Log.create({ service: "session.tool" })
 
   /**
+   * Tools that are safe to use in voice/realtime mode.
+   *
+   * Excluded tools:
+   * - task: spawns sub-agents requiring real provider/model
+   * - question: requires interactive UI
+   * - batch: spawns multiple operations
+   * - invalid: internal error handling tool
+   * - plan_enter, plan_exit: plan mode requires UI interaction
+   * - skill: might have interactive requirements
+   * - todo_write, todo_read: noisy for voice, less useful
+   * - apply_patch: complex tool, less suitable for voice
+   * - lsp: experimental, complex
+   */
+  const VOICE_MODE_TOOLS = new Set([
+    "read",
+    "glob",
+    "grep",
+    "write",
+    "edit",
+    "bash",
+    "webfetch",
+    "websearch",
+    "codesearch",
+  ])
+
+  /**
+   * OpenAI function tool definition format.
+   */
+  export const ToolDefinition = z.object({
+    type: z.literal("function"),
+    name: z.string(),
+    description: z.string(),
+    parameters: z.any(), // JSON Schema
+    strict: z.boolean(),
+  })
+  export type ToolDefinition = z.infer<typeof ToolDefinition>
+
+  /**
+   * Input schema for listing tools.
+   */
+  export const ListInput = z.object({
+    sessionID: Identifier.schema("session"),
+  })
+  export type ListInput = z.infer<typeof ListInput>
+
+  /**
+   * Output schema for tool list.
+   */
+  export const ListOutput = z.array(ToolDefinition)
+  export type ListOutput = z.infer<typeof ListOutput>
+
+  /**
+   * List available tools for a session in OpenAI function format.
+   *
+   * Returns tools from ToolRegistry converted to OpenAI's function calling format.
+   * Used by client-side inference (e.g., voice/realtime) to configure the provider.
+   *
+   * Filters tools to only include those safe for voice/realtime mode.
+   */
+  export const list = fn(ListInput, async (input): Promise<ListOutput> => {
+    const { sessionID } = input
+
+    // Verify session exists
+    const session = await Session.get(sessionID)
+    if (!session) {
+      throw new Error(`Session not found: ${sessionID}`)
+    }
+
+    // Get tools from registry (using openai/gpt-4 as reference for tool selection)
+    const allTools = await ToolRegistry.tools({ providerID: "openai", modelID: "gpt-4" })
+
+    // Filter to only voice-mode safe tools
+    const tools = allTools.filter((t) => VOICE_MODE_TOOLS.has(t.id))
+
+    // Convert to OpenAI function format
+    const definitions: ToolDefinition[] = tools.map((tool) => ({
+      type: "function" as const,
+      name: tool.id,
+      description: tool.description,
+      parameters: z.toJSONSchema(tool.parameters),
+      strict: true,
+    }))
+
+    log.info("listed tools", { sessionID, count: definitions.length, filtered: allTools.length - tools.length })
+
+    return definitions
+  })
+
+  /**
    * Input schema for calling a tool.
    */
   export const CallInput = z.object({

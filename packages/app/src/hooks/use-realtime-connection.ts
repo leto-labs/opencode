@@ -1,11 +1,8 @@
 import { createSignal, onCleanup, createEffect, on, type Accessor } from "solid-js"
-import {
-  RealtimeSession,
-  RealtimeAgent,
-  OpenAIRealtimeWebRTC,
-} from "@openai/agents/realtime"
+import { RealtimeSession, RealtimeAgent, OpenAIRealtimeWebRTC } from "@openai/agents/realtime"
 import type { RealtimeItem } from "@openai/agents-realtime"
 import { useSDK } from "@/context/sdk"
+import { toOpenAIAgentTools, type ServerToolDefinition } from "@/util/openai-realtime-tool"
 
 export type RealtimeStatus = "disconnected" | "connecting" | "connected" | "error"
 
@@ -18,6 +15,8 @@ export interface RealtimeConnectionConfig {
   onHistoryAdded?: (item: unknown) => void
   /** Callback when history is updated */
   onHistoryUpdated?: (history: unknown) => void
+  /** Callback when a tool is called (for logging/UI) */
+  onToolCall?: (toolCall: { name: string; callId: string; arguments: unknown }) => void
 }
 
 /**
@@ -81,6 +80,48 @@ export function useRealtimeConnection(
     } catch (err) {
       console.error("[realtime] failed to fetch ephemeral key", err)
       return null
+    }
+  }
+
+  // Fetch tools from server
+  const fetchToolDefinitions = async (): Promise<ServerToolDefinition[]> => {
+    const sid = sessionID()
+    if (!sid) return []
+
+    try {
+      const response = await sdk.client.session.tools.list({ sessionID: sid })
+      if (response.error || !response.data) {
+        console.log("[realtime] failed to fetch tools:", response.error)
+        return []
+      }
+      console.log("[realtime] fetched", response.data.length, "tool definitions")
+      return response.data as ServerToolDefinition[]
+    } catch (err) {
+      console.error("[realtime] failed to fetch tools:", err)
+      return []
+    }
+  }
+
+  // Fetch system prompt from server
+  const fetchSystemPrompt = async (): Promise<string> => {
+    const sid = sessionID()
+    if (!sid) return "You are a helpful assistant."
+
+    try {
+      const response = await sdk.client.session.systemPrompt.get({
+        sessionID: sid,
+        modelID: "gpt-realtime",
+        providerID: "openai",
+      })
+      if (response.error || !response.data) {
+        console.log("[realtime] failed to fetch system prompt:", response.error)
+        return "You are a helpful assistant."
+      }
+      console.log("[realtime] fetched system prompt:", response.data.instructions.substring(0, 100) + "...")
+      return response.data.instructions
+    } catch (err) {
+      console.error("[realtime] failed to fetch system prompt:", err)
+      return "You are a helpful assistant."
     }
   }
 
@@ -187,16 +228,53 @@ export function useRealtimeConnection(
         return
       }
 
+      // Fetch tool definitions and system prompt from server in parallel
+      const [allToolDefinitions, instructions] = await Promise.all([fetchToolDefinitions(), fetchSystemPrompt()])
+
+      // Filter to only voice-safe tools (exclude tools that spawn sub-agents or require UI)
+      const VOICE_SAFE_TOOLS = new Set(["read", "glob", "grep", "write", "edit", "bash", "webfetch", "websearch", "codesearch"])
+      const toolDefinitions = allToolDefinitions.filter((t) => VOICE_SAFE_TOOLS.has(t.name))
+
+      // Log tool definitions for debugging
+      console.log("[realtime] fetched tool definitions:", allToolDefinitions.map((t) => t.name))
+      console.log("[realtime] filtered to voice-safe tools:", toolDefinitions.map((t) => t.name))
+
+      // Convert server tool definitions to executable OpenAI Agent SDK tools
+      const tools = toOpenAIAgentTools(toolDefinitions, {
+        sessionID: sid,
+        sdk,
+        onExecute: (toolName, args) => {
+          console.log("[realtime] tool execution started:", toolName, args)
+          config.onToolCall?.({ name: toolName, callId: "pending", arguments: args })
+        },
+        onComplete: (toolName, result, error) => {
+          if (error) {
+            console.log("[realtime] tool execution failed:", toolName, error)
+          } else {
+            console.log("[realtime] tool execution completed:", toolName, result)
+          }
+        },
+      })
+      console.log("[realtime] created", tools.length, "executable tools:", tools.map((t) => t.name))
+
+      // Check if connection was aborted during async operation
+      if (connectAborted) {
+        console.log("[realtime] connection aborted during config fetch")
+        setStatus("disconnected")
+        return
+      }
+
       // Create hidden audio element for playback
       audioElement = document.createElement("audio")
       audioElement.autoplay = true
       audioElement.style.display = "none"
       document.body.appendChild(audioElement)
 
-      // Create agent
+      // Create agent with server-provided instructions and tools
       const agent = new RealtimeAgent({
-        name: "Assistant",
-        instructions: "You are a helpful assistant. Keep responses concise.",
+        name: "OpenCode",
+        instructions,
+        tools,
       })
 
       // Create transport
@@ -252,8 +330,27 @@ export function useRealtimeConnection(
       })
 
       session.on("transport_event", (event: { type: string; [key: string]: unknown }) => {
-        console.log("[realtime] transport_event", event.type, event)
+        // Log important events for debugging tool calls
+        if (
+          event.type.includes("function") ||
+          event.type.includes("tool") ||
+          event.type === "response.created" ||
+          event.type === "response.done"
+        ) {
+          console.log("[realtime] transport_event", event.type, JSON.stringify(event, null, 2))
+        } else {
+          console.log("[realtime] transport_event", event.type)
+        }
         config.onTransportEvent?.(event)
+      })
+
+      // Tool execution lifecycle events from SDK
+      session.on("agent_tool_start", (item: unknown) => {
+        console.log("[realtime] agent_tool_start", JSON.stringify(item, null, 2))
+      })
+
+      session.on("agent_tool_end", (item: unknown) => {
+        console.log("[realtime] agent_tool_end", JSON.stringify(item, null, 2))
       })
 
       // Check abort again before expensive WebRTC connection

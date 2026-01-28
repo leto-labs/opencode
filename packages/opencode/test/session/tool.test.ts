@@ -11,6 +11,65 @@ const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
 
 describe("SessionTool", () => {
+  describe("list", () => {
+    test("should return tools in OpenAI function format", async () => {
+      await Instance.provide({
+        directory: projectRoot,
+        fn: async () => {
+          const session = await Session.create({})
+
+          const tools = await SessionTool.list({ sessionID: session.id })
+
+          // Should return an array of tools
+          expect(Array.isArray(tools)).toBe(true)
+          expect(tools.length).toBeGreaterThan(0)
+
+          // Each tool should have the expected format
+          const readTool = tools.find((t) => t.name === "read")
+          expect(readTool).toBeDefined()
+          expect(readTool!.type).toBe("function")
+          expect(readTool!.description).toBeDefined()
+          expect(readTool!.parameters).toBeDefined()
+
+          // Parameters should be a JSON Schema (either directly or wrapped)
+          // zod-to-json-schema may return different structures
+          expect(typeof readTool!.parameters).toBe("object")
+
+          await Session.remove(session.id)
+        },
+      })
+    })
+
+    test("should throw error for non-existent session", async () => {
+      await Instance.provide({
+        directory: projectRoot,
+        fn: async () => {
+          await expect(SessionTool.list({ sessionID: "ses_nonexistent123" })).rejects.toThrow()
+        },
+      })
+    })
+
+    test("should include common tools", async () => {
+      await Instance.provide({
+        directory: projectRoot,
+        fn: async () => {
+          const session = await Session.create({})
+
+          const tools = await SessionTool.list({ sessionID: session.id })
+          const toolNames = tools.map((t) => t.name)
+
+          // Check for some common tools
+          expect(toolNames).toContain("read")
+          expect(toolNames).toContain("glob")
+          expect(toolNames).toContain("grep")
+          expect(toolNames).toContain("bash")
+
+          await Session.remove(session.id)
+        },
+      })
+    })
+  })
+
   describe("call", () => {
     test("should return error for non-existent tool", async () => {
       await Instance.provide({
