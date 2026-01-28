@@ -228,34 +228,17 @@ export function useRealtimeConnection(
         return
       }
 
-      // Fetch tool definitions and system prompt from server in parallel
-      const [allToolDefinitions, instructions] = await Promise.all([fetchToolDefinitions(), fetchSystemPrompt()])
+      // Fetch system prompt from server
+      const instructions = await fetchSystemPrompt()
 
-      // Filter to only voice-safe tools (exclude tools that spawn sub-agents or require UI)
-      const VOICE_SAFE_TOOLS = new Set(["read", "glob", "grep", "write", "edit", "bash", "webfetch", "websearch", "codesearch"])
-      const toolDefinitions = allToolDefinitions.filter((t) => VOICE_SAFE_TOOLS.has(t.name))
-
-      // Log tool definitions for debugging
-      console.log("[realtime] fetched tool definitions:", allToolDefinitions.map((t) => t.name))
-      console.log("[realtime] filtered to voice-safe tools:", toolDefinitions.map((t) => t.name))
-
-      // Convert server tool definitions to executable OpenAI Agent SDK tools
-      const tools = toOpenAIAgentTools(toolDefinitions, {
-        sessionID: sid,
-        sdk,
-        onExecute: (toolName, args) => {
-          console.log("[realtime] tool execution started:", toolName, args)
-          config.onToolCall?.({ name: toolName, callId: "pending", arguments: args })
-        },
-        onComplete: (toolName, result, error) => {
-          if (error) {
-            console.log("[realtime] tool execution failed:", toolName, error)
-          } else {
-            console.log("[realtime] tool execution completed:", toolName, result)
-          }
-        },
-      })
-      console.log("[realtime] created", tools.length, "executable tools:", tools.map((t) => t.name))
+      // TEMPORARILY DISABLED: Tools are disabled while we test dual agent flow
+      // TODO: Re-enable tools after dual agent flow is working
+      // const [allToolDefinitions, instructions] = await Promise.all([fetchToolDefinitions(), fetchSystemPrompt()])
+      // const VOICE_SAFE_TOOLS = new Set(["glob", "grep", "task"])
+      // const toolDefinitions = allToolDefinitions.filter((t) => VOICE_SAFE_TOOLS.has(t.name))
+      // const tools = toOpenAIAgentTools(toolDefinitions, { sessionID: sid, sdk, ... })
+      const tools: ReturnType<typeof toOpenAIAgentTools> = []
+      console.log("[realtime] tools disabled for testing dual agent flow")
 
       // Check if connection was aborted during async operation
       if (connectAborted) {

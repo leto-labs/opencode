@@ -1,10 +1,202 @@
 # Phase 4: Voice Tool Calling
 
-**Status: IN PROGRESS**
+**Status: IN PROGRESS - ARCHITECTURE REVISION NEEDED**
 
 ## PRD
 
 Enable the voice assistant to execute OpenCode tools. When OpenAI generates a function call, the client forwards it to the server for execution, then sends the result back to OpenAI. The voice agent should also use OpenCode's system prompt for consistent behavior.
+
+---
+
+## ⚠️ Critical Issue: Token Limits
+
+### Problem
+
+The current architecture loads tools and their outputs directly into the realtime session context. This hits OpenAI's token-per-minute (TPM) limits quickly:
+
+- **gpt-4o-realtime Tier 1 limit**: 40,000 TPM
+- **Current system prompt**: ~15,000 tokens per request
+- **Tool outputs (file reads, etc.)**: Can easily add 10,000+ tokens
+
+This makes the current approach **fundamentally unscalable** for any non-trivial tool use.
+
+### Solution: Subagent Architecture
+
+Adopt a pattern similar to the `chatSupervisor` example from OpenAI's realtime-agents repo:
+
+1. **Realtime Agent (Junior)**: Lightweight, handles conversation, minimal token footprint
+2. **Text Subagent (Supervisor)**: Handles heavy operations, runs on a different model
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         VOICE MODE ARCHITECTURE                      │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌──────────────────┐                    ┌──────────────────┐       │
+│  │  Realtime Agent  │                    │   OpenAI         │       │
+│  │  (gpt-4o-realtime)│◄──── WebRTC ────►│   Realtime API   │       │
+│  │                  │                    │                  │       │
+│  │  Tools:          │                    └──────────────────┘       │
+│  │  - glob (light)  │                                               │
+│  │  - grep (light)  │                                               │
+│  │  - subagent ─────┼────────────────┐                              │
+│  └──────────────────┘                │                              │
+│                                      ▼                              │
+│                         ┌──────────────────┐                        │
+│                         │  Text Subagent   │                        │
+│                         │  (claude-haiku)  │                        │
+│                         │                  │                        │
+│                         │  Tools:          │                        │
+│                         │  - read          │                        │
+│                         │  - write         │                        │
+│                         │  - edit          │                        │
+│                         │  - bash          │                        │
+│                         │  - webfetch      │                        │
+│                         │  - websearch     │                        │
+│                         │  - codesearch    │                        │
+│                         └────────┬─────────┘                        │
+│                                  │                                  │
+│                                  ▼                                  │
+│                         ┌──────────────────┐                        │
+│                         │  OpenCode Server │                        │
+│                         │  - Tool Registry │                        │
+│                         │  - Execution     │                        │
+│                         └──────────────────┘                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Why This Works
+
+| Aspect | Direct Tools (Current) | Subagent Architecture |
+|--------|------------------------|----------------------|
+| **Token usage per request** | High (full outputs in context) | Low (only summary returned) |
+| **File read output** | Full file content (~10k tokens) | Summary from subagent (~100 tokens) |
+| **Cost** | High (realtime pricing) | Lower (subagent uses cheaper model) |
+| **Latency** | Fast for small ops | Slightly slower, but sustainable |
+| **Scalability** | Hits TPM limits quickly | Scales with subagent model limits |
+
+### Tool Distribution
+
+**Realtime Agent Tools** (low token impact):
+- `glob` - Returns file paths only (small output)
+- `grep` - Returns matching lines only (bounded output)
+- `subagent` - Delegates to text model, returns summary
+
+**Subagent Tools** (high token impact, handled by text model):
+- `read` - File contents can be large
+- `write` - Confirmation message only
+- `edit` - Diff output can be large
+- `bash` - Command output varies
+- `webfetch` - Web content can be huge
+- `websearch` - Search results
+- `codesearch` - Code search results
+
+### Implementation Approach
+
+OpenCode already has a `task` tool that spawns sub-agents. The issue is that voice mode currently uses `modelID: "client"` which doesn't work for sub-agents.
+
+**Root Cause Analysis**:
+The task tool (lines 102-105 in `tool/task.ts`) inherits the parent's model:
+```typescript
+const model = agent.model ?? {
+  modelID: msg.info.modelID,
+  providerID: msg.info.providerID,
+}
+```
+In voice mode, the parent message has `modelID: "client"`, so subagents fail.
+
+**Solution: Simplified Dual Model Architecture (Frontend-Only)**
+
+The backend doesn't need to know about realtime models. Voice mode is a frontend overlay that uses a different inference path when active.
+
+### Key Principles
+
+1. **Model selector stays unchanged** - Remove GPT Realtime from picker, back to original (text models only)
+2. **Voice mode enabled by provider** - If OpenAI provider is configured, show voice mode buttons
+3. **Inference path based on call state**:
+   - Call NOT active → send to regular text model (as before)
+   - Call active → send to realtime model + store transcript
+4. **Same session, seamless switching** - Both modes share the same session/conversation
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Session (single, shared)                                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Model: "anthropic/claude-sonnet"  ← Selected in picker         │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Voice Call: INACTIVE                                    │   │
+│  │  [Start Call 🎤]                                         │   │
+│  │                                                          │   │
+│  │  User sends message → Regular model (claude-sonnet)      │   │
+│  │  Task tool → Uses claude-sonnet for subagents ✓          │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Voice Call: ACTIVE                                      │   │
+│  │  [End Call 🔴]                                           │   │
+│  │                                                          │   │
+│  │  User sends message → Realtime model (gpt-4o-realtime)   │   │
+│  │  Task tool → Uses claude-sonnet for subagents ✓          │   │
+│  │  (realtime model only for direct conversation)           │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### User Stories to Test
+
+**Story A: Text-first workflow**
+1. User sends text message → regular model responds
+2. User starts voice call
+3. User sends message (text or voice) → realtime model responds
+4. User ends call
+5. User sends text message → regular model responds
+6. ✓ All messages visible in same conversation, no data loss
+
+**Story B: Voice-first workflow**
+1. User starts voice call
+2. User sends message via realtime → realtime model responds
+3. User ends call
+4. User sends text message → regular model responds
+5. ✓ All messages visible in same conversation, no data loss
+
+### Implementation Changes
+
+1. **Remove GPT Realtime from model selector**
+   - Revert model picker to original (text models only)
+   - Voice mode availability based on OpenAI provider being configured
+
+2. **Conditional inference path in chat input**
+   - Check `isCallActive` state
+   - If active: send to realtime via WebRTC
+   - If not active: send to regular model via existing API
+
+3. **History continuity**
+   - On call start: inject existing conversation history to realtime
+   - On call end: conversation continues with regular model
+   - Both modes read/write to same session
+
+4. **Voice mode button visibility**
+   - Show "Start Call" button if OpenAI provider is available
+   - No need to select realtime model explicitly
+
+### Benefits
+
+- No backend changes needed
+- Model picker unchanged (cleaner UX)
+- Task tool works automatically (uses session's text model)
+- Seamless mode switching within same conversation
+- Voice mode is an "enhancement", not a separate mode
+
+Reference implementation: `/tmp/openai-realtime-agents/src/app/agentConfigs/chatSupervisor/`
+- `supervisorAgent.ts` shows how to call a text model from a realtime tool
+- Uses `fetch('/api/responses')` to call a text model and return results
+
+---
 
 ## Architecture
 
@@ -284,7 +476,7 @@ const agent = new RealtimeAgent({
 
 ## Tasks
 
-### Server
+### Server (Current - Working but needs revision)
 - [x] `POST /session/:id/tool/call` endpoint (Phase 2, extracted to module)
 - [x] Create `session/tool.ts` module with `SessionTool.list()` and `SessionTool.call()`
 - [x] `GET /session/:id/tools` - List available tools in OpenAI function format
@@ -292,24 +484,29 @@ const agent = new RealtimeAgent({
 - [x] `GET /session/:id/system_prompt` - Get assembled instructions (inline in routes)
 - [x] Filter tools for voice mode (exclude task, question, batch, etc.)
 
-### Client
+### Client (Current - Working but hits token limits)
 - [x] Fetch tools on connect via `sdk.client.session.tools.list()`
 - [x] Fetch system prompt on connect via `sdk.client.session.systemPrompt.get()`
 - [x] Configure RealtimeAgent with server-provided instructions
 - [x] Create `toOpenAIAgentTools()` utility to convert server tools to executable SDK tools
 - [x] Forward tool calls to server `/tool/call` endpoint
 - [x] Handle tool results and errors
+- [x] Client-side tool filtering (VOICE_SAFE_TOOLS)
 - [ ] Tool execution UI indicator
 - [ ] Error handling and retry logic
+
+### ⚠️ BLOCKED: Token Limit Issue
+The above implementation works but hits gpt-4o-realtime's 40k TPM limit quickly.
+**Next step**: Implement Phase 4e (Subagent Architecture) to resolve this.
 
 ---
 
 ## Open Questions
 
-1. **Which tools to enable?** ✅ RESOLVED
-   - Subset for voice: read, glob, grep, write, edit, bash, webfetch, websearch, codesearch
-   - Excluded: task (sub-agents), question (UI), batch, invalid, plan_*, skill, todo_*, apply_patch, lsp
-   - See `VOICE_MODE_TOOLS` in `session/tool.ts`
+1. **Which tools to enable?** ✅ RESOLVED → NEEDS REVISION
+   - ~~Subset for voice: read, glob, grep, write, edit, bash, webfetch, websearch, codesearch~~
+   - **New approach**: Only `glob`, `grep`, and `subagent` for realtime agent
+   - Heavy tools delegated to subagent running on text model (Anthropic Haiku)
 
 2. **Permission handling in voice mode?**
    - Currently `ctx.ask()` is a no-op
@@ -321,10 +518,15 @@ const agent = new RealtimeAgent({
    - Need to handle partial results or cancellation
    - AbortSignal support in tools
 
-4. **System prompt size?**
-   - Full OpenCode prompt is large
-   - May need condensed version for voice
-   - Token limits for realtime API?
+4. **System prompt size?** ✅ RESOLVED
+   - Full OpenCode prompt is too large (~15k tokens)
+   - **Solution**: Use condensed voice-specific prompt for realtime agent
+   - Full prompt goes to subagent instead
+
+5. **Token limits?** ✅ IDENTIFIED - CRITICAL
+   - gpt-4o-realtime has 40,000 TPM limit (Tier 1)
+   - Current architecture hits this limit quickly with file reads
+   - **Solution**: Subagent architecture (see above)
 
 ---
 
@@ -351,8 +553,227 @@ const agent = new RealtimeAgent({
 
 ---
 
+## Phase 4e: Subagent Architecture (NEW)
+
+### Goal
+
+Refactor voice tool calling to use a subagent architecture that avoids token limits.
+
+### Implementation Plan
+
+#### Step 1: Create Voice-Specific Subagent Tool
+
+Create a new tool specifically for voice mode that calls a text model:
+
+```typescript
+// packages/opencode/src/tool/voice-subagent.ts
+export const VoiceSubagentTool: Tool.Info = {
+  id: "subagent",
+  init: async () => ({
+    description: "Delegate complex tasks to a text-based assistant. Use for file operations, code analysis, web searches, and any task requiring detailed output.",
+    parameters: z.object({
+      task: z.string().describe("Description of what you want the assistant to do"),
+      context: z.string().optional().describe("Any relevant context from the conversation"),
+    }),
+    execute: async (args, ctx) => {
+      // Call a text model (Anthropic Haiku) with the full toolset
+      // Return a concise summary to the realtime agent
+    },
+  }),
+}
+```
+
+#### Step 2: Configure Subagent Model
+
+The subagent should use a hardcoded model configuration:
+
+```typescript
+const VOICE_SUBAGENT_CONFIG = {
+  providerID: "anthropic",
+  modelID: "claude-haiku", // Fast and cheap
+  // OR use existing task tool with model override
+}
+```
+
+**Option A**: Modify existing `task` tool to accept model override
+**Option B**: Create new `voice-subagent` tool with hardcoded model (simpler)
+
+#### Step 3: Update Tool Filtering
+
+Update client-side filter in `use-realtime-connection.ts`:
+
+```typescript
+// Only these tools for realtime agent
+const VOICE_REALTIME_TOOLS = new Set([
+  "glob",      // Light - returns file paths only
+  "grep",      // Light - returns matching lines
+  "subagent",  // Delegates to text model
+])
+```
+
+#### Step 4: Reduce System Prompt Size
+
+Create a condensed voice-specific system prompt:
+
+```typescript
+// Instead of full OpenCode prompt (~15k tokens)
+// Use a minimal prompt (~1k tokens) that:
+// - Describes the agent's role
+// - Explains available tools (glob, grep, subagent)
+// - Instructs to delegate complex tasks to subagent
+```
+
+#### Step 5: Subagent Implementation Details
+
+The subagent tool execute function should:
+
+1. **Build context**: Include conversation history summary, relevant file paths
+2. **Call text model**: Use `streamText()` or similar with full tool access
+3. **Execute tools**: Let the text model use read/write/edit/bash as needed
+4. **Summarize result**: Return a concise summary (not full output) to realtime agent
+
+```typescript
+execute: async (args, ctx) => {
+  const { task, context } = args
+
+  // Build messages for subagent
+  const messages = [
+    { role: "system", content: SUBAGENT_SYSTEM_PROMPT },
+    { role: "user", content: `Task: ${task}\n\nContext: ${context || "None"}` },
+  ]
+
+  // Call text model with full toolset
+  const result = await streamText({
+    model: anthropic("claude-3-5-haiku-latest"),
+    messages,
+    tools: await ToolRegistry.tools({ providerID: "anthropic", modelID: "claude-haiku" }),
+    maxSteps: 10, // Allow multiple tool calls
+  })
+
+  // Return concise summary (NOT full tool outputs)
+  return {
+    title: "Subagent completed task",
+    output: result.text, // Just the final answer
+  }
+}
+```
+
+### Tasks
+
+#### Phase 4e-1: Simplified Dual Model Refactor
+
+**3 files to modify, no new state:**
+
+**File 1: `packages/app/src/context/local.tsx`**
+- [ ] Lines 147-152: Remove `GPT_REALTIME_MODEL` from `listWithClientSide` array
+  ```typescript
+  // Before: return [...baseList, GPT_REALTIME_MODEL as ...]
+  // After:  return baseList
+  ```
+- Result: Model picker shows only text models (GPT Realtime no longer appears)
+
+**File 2: `packages/app/src/context/voice-mode.tsx`**
+- [ ] Line 35: DELETE `isVoiceModel` (only used by auto-connect effects we're removing)
+- [ ] Lines 263-268: DELETE `onMount` auto-connect block
+- [ ] Lines 271-288: DELETE `createEffect` model-change watcher
+- Result: Voice mode no longer auto-connects; user must manually start call
+
+**File 3: `packages/app/src/components/prompt-input.tsx`**
+- [ ] Line 237: Change `isVoiceModel` condition
+  ```typescript
+  // Before: local.model.current()?.voice === true
+  // After:  providers.connected().some(p => p.id === "openai")
+  ```
+- [ ] Lines 1615-1646: Simplify `send` function routing
+  ```typescript
+  // Before: if (currentModel?.clientSide) { ... if (currentModel?.voice) ... }
+  // After:  if (voiceMode.status() === "connected") { ... }
+  ```
+  - Uses existing `voiceMode.status()` state (already used at line 2101)
+  - If connected: store transcript + send via `voiceMode.sendText()`
+  - If not connected: send via `client.session.prompt()` (regular API)
+
+**Verification needed (may require changes):**
+
+- [ ] **History injection** (`use-realtime-connection.ts` lines 349-353):
+  - When call starts, `loadConversationHistory()` fetches session messages
+  - `session.updateHistory()` injects them into realtime context
+  - Verify: realtime agent sees prior text conversation
+  - May need changes if history format doesn't match realtime expectations
+
+- [ ] **Transcript storage** (`voice-mode.tsx` lines 44-75, 178-201):
+  - During call, `storeTranscript()` calls `session.transcript.add()`
+  - Critical: Does this properly integrate with session message history?
+  - When call ends, regular model must see voice conversation
+  - May need changes if transcript isn't visible to regular model
+
+#### Phase 4e-1 Testing (Chrome plugin, text input OK)
+
+**Test Story A: Text-first**
+- [ ] Send text message → regular model responds ✓
+- [ ] Start voice call
+- [ ] Send text message → realtime model responds ✓
+- [ ] End call
+- [ ] Send text message → regular model responds ✓
+- [ ] Verify: all messages in conversation, no data loss
+
+**Test Story B: Voice-first**
+- [ ] Start voice call
+- [ ] Send text message → realtime model responds ✓
+- [ ] End call
+- [ ] Send text message → regular model responds ✓
+- [ ] Verify: all messages in conversation, no data loss
+
+**Edge case: Mid-response call start**
+- [ ] Send text message, while streaming click "Start Call"
+- [ ] Expected: text response continues displaying, realtime agent may miss in-flight response
+- [ ] Acceptable for v1 - user initiated the switch, they can see the text response on screen
+- [ ] Future: could disable "Start Call" while response streaming
+
+---
+
+#### Phase 4e-2: Tool Filtering for Token Limits (After 4e-1)
+
+- [ ] `packages/app/src/hooks/use-realtime-connection.ts`
+  - Update `VOICE_SAFE_TOOLS` to only: `glob`, `grep`, `task`
+  - Remove: `read`, `write`, `edit`, `bash`, `webfetch`, `websearch`, `codesearch`
+
+- [ ] Create condensed voice system prompt
+  - Shorter than full OpenCode prompt
+  - Instructs agent to use `task` tool for complex operations
+
+- [ ] Test: voice → task tool → subagent uses session's text model
+
+---
+
+#### Phase 4e-3: Polish (After 4e-2)
+
+- [ ] Handle subagent errors gracefully in voice mode
+- [ ] Test end-to-end: voice → task tool → subagent (text model) → result
+- [ ] Consider UX improvements (loading indicators, error messages)
+
+### Success Criteria
+
+- [ ] Realtime agent only uses glob, grep, subagent tools
+- [ ] Subagent executes on Anthropic Haiku (not client/realtime)
+- [ ] Token usage stays well under 40k TPM
+- [ ] File reads work via subagent delegation
+- [ ] Response quality maintained despite indirection
+
+### Risks & Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Latency increase from subagent call | Use fast model (Haiku), optimize prompts |
+| Loss of context between realtime ↔ subagent | Pass conversation summary to subagent |
+| Subagent errors not surfaced well | Return clear error messages to realtime |
+| Cost of running two models | Haiku is cheap, saves on realtime TPM |
+
+---
+
 ## References
 
 - [Tool Flow Documentation](../architecture/tool-flow.md)
 - [Tool Integration for Realtime](./tool-integration.md)
 - [OpenAI Realtime API](./openai-api.md)
+- [OpenAI Realtime Agents - chatSupervisor Example](https://github.com/openai/openai-realtime-agents)

@@ -1,8 +1,7 @@
-import { createSignal, onMount, createEffect, on } from "solid-js"
+import { createSignal } from "solid-js"
 import { produce } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "@/context/global-sync"
-import { useLocal } from "@/context/local"
 import { useSDK } from "@/context/sdk"
 import { useRealtimeConnection } from "@/hooks/use-realtime-connection"
 import { Identifier } from "@/utils/id"
@@ -20,7 +19,6 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
   gate: false, // Don't block rendering while connecting
   init: (props: VoiceModeProps) => {
     const globalSync = useGlobalSync()
-    const local = useLocal()
     const sdk = useSDK()
 
     // Audio state - both enabled by default when session starts
@@ -30,9 +28,6 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
     // Session ID and directory from context
     const sessionID = () => props.sessionID
     const directory = () => sdk.directory
-
-    // Check if the current model supports voice
-    const isVoiceModel = () => local.model.current()?.voice === true
 
     // Helper to get output modalities based on speaker state
     // OpenAI only supports ["text"] OR ["audio"], not both
@@ -259,33 +254,8 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
       return connection.sendMessage(text)
     }
 
-    // Auto-connect on mount if voice model is selected AND we have a session
-    onMount(() => {
-      if (isVoiceModel() && sessionID()) {
-        console.log("[voice] auto-connecting on mount for session:", sessionID())
-        connection.connect()
-      }
-    })
-
-    // Handle model changes - connect/disconnect WebRTC as needed
-    createEffect(
-      on(
-        () => isVoiceModel(),
-        (isVoice, wasVoice) => {
-          // Model switched TO voice - connect WebRTC
-          if (isVoice && !wasVoice && sessionID()) {
-            console.log("[voice] model switched to voice, connecting")
-            connection.connect()
-          }
-          // Model switched AWAY from voice - disconnect WebRTC
-          if (!isVoice && wasVoice) {
-            console.log("[voice] model switched away from voice, disconnecting")
-            connection.disconnect()
-          }
-        },
-        { defer: true },
-      ),
-    )
+    // Voice mode is now manual - user must explicitly start/stop calls
+    // No auto-connect on mount or model change
 
     return {
       status: connection.status,

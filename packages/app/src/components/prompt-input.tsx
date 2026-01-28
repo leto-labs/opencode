@@ -233,13 +233,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     () => prompt.current().filter((part) => part.type === "image") as ImageAttachmentPart[],
   )
 
-  // Check if current model is a voice model (audio I/O, WebRTC)
-  const isVoiceModel = createMemo(() => local.model.current()?.voice === true)
+  // Voice mode is available when OpenAI provider is connected (shares API key for realtime)
+  const isVoiceModeAvailable = createMemo(() => providers.connected().some((p) => p.id === "openai"))
 
-  // Voice mode connection is now handled by VoiceModeProvider lifecycle
-  // - onMount: auto-connects if client-side model is selected
-  // - onCleanup: auto-disconnects when session unmounts
-  // - model change effect: connects/disconnects based on model selection
+  // Voice mode is now manual - user explicitly starts/stops calls
+  // Voice buttons shown when OpenAI available, routing based on call active state
 
   const [store, setStore] = createStore<{
     popover: "at" | "slash" | null
@@ -1610,31 +1608,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       const ok = await waitForWorktree()
       if (!ok) return
 
-      const currentModel = local.model.current()
-
-      if (currentModel?.clientSide) {
-        // Client-side model, store transcript on the server
+      // Route based on whether voice call is active (not model selection)
+      if (voiceMode.status() === "connected") {
+        // Voice call active - store transcript and send to realtime
         await client.session.transcript.add({
           sessionID: session.id,
           role: "user",
           messageID,
           parts: requestParts,
         })
-
-        if (currentModel?.voice) {
-          // Voice model: auto-connect if not connected, then send
-          if (voiceMode.status() !== "connected") {
-            await voiceMode.connect()
-            // Check if connection succeeded
-            if (voiceMode.status() !== "connected") {
-              throw new Error(voiceMode.error() || "Failed to connect voice mode")
-            }
-          }
-          voiceMode.sendText(text)
-        }
-        // Client-side text-only models: transcript stored, no agent to send to
+        voiceMode.sendText(text)
       } else {
-        // Server-side model, send to agent
+        // No voice call - send to regular model via server
         await client.session.prompt({
           sessionID: session.id,
           agent,
@@ -2075,7 +2060,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </Button>
                 </Tooltip>
               </Show>
-              <Show when={isVoiceModel()}>
+              <Show when={isVoiceModeAvailable()}>
                 {/* Connection status indicator - matches Status popover design */}
                 <div class="flex items-center gap-1.5 px-2 py-1">
                   <div
