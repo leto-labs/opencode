@@ -150,7 +150,9 @@ describe("SessionTool", () => {
           const toolPart = assistantMessage!.parts.find((p) => p.type === "tool") as MessageV2.ToolPart
 
           expect(toolPart.state.status).toBe("error")
-          expect(toolPart.state.error).toBeDefined()
+          if (toolPart.state.status === "error") {
+            expect(toolPart.state.error).toBeDefined()
+          }
 
           await Session.remove(session.id)
         },
