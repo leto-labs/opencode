@@ -67,6 +67,7 @@ The OpenCode mobile app provides a **hands-free voice interface** for interactin
 | Document | Description |
 |----------|-------------|
 | [TAURI_MOBILE.md](./TAURI_MOBILE.md) | Tauri mobile setup and configuration |
+| [ANDROID_TESTING.md](./ANDROID_TESTING.md) | Testing on real Android devices |
 | [VOICE_BACKGROUND_AUDIO.md](./VOICE_BACKGROUND_AUDIO.md) | Background audio research and implementation |
 | [PLATFORM_CAPABILITIES.md](./PLATFORM_CAPABILITIES.md) | iOS vs Android feature comparison |
 
