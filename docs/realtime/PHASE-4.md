@@ -1,6 +1,6 @@
 # Phase 4: Voice Tool Calling
 
-**Status: IN PROGRESS - Phase 4e-4 complete, testing Phase 4e-5**
+**Status: IN PROGRESS - Phase 4e-4 complete, Phase 4e-5 (subagent response handling) pending**
 
 ## PRD
 
@@ -926,7 +926,61 @@ Created condensed voice prompt that:
 
 ---
 
-#### Phase 4e-5: Testing & Validation
+#### Phase 4e-5: Subagent Response Handling ⚠️ PENDING
+
+**Problem:** Voice mode doesn't handle subagent progress/completion properly.
+
+**Current Flow (broken for task tool):**
+```
+1. OpenAI Realtime sends function_call → client
+2. Client HTTP POSTs to /session/:id/tool/call (blocking)
+3. Server calls tool.execute(args, ctx) in SessionTool.call (line 234)
+4. For task tool: subagent spawns, runs for 10-60s
+   - Subagent progress sent via SSE (Bus.publish MessageV2.Event.PartUpdated)
+   - Client NOT subscribed to these SSE events during voice mode
+5. HTTP response returns when subagent completes
+6. Client sends function_call_output back to OpenAI Realtime
+7. OpenAI generates spoken response
+```
+
+**Issues:**
+1. **No intermediate feedback**: User hears nothing while subagent runs (10-60s silence)
+2. **No UI progress**: Regular text mode shows subagent tool calls in real-time via SSE; voice mode shows nothing
+3. **HTTP timeout risk**: Long-running subagent may exceed HTTP timeout
+4. **Voice agent doesn't speak result**: After tool completes, the realtime agent needs to generate a spoken response from the tool output — need to verify this works end-to-end
+
+**What regular text mode does differently:**
+- Frontend subscribes to SSE stream (`/session/:id/events`)
+- SSE delivers `MessageV2.Event.PartUpdated` events in real-time
+- UI renders each tool call, partial results, text chunks as they arrive
+- The agent loop is server-side, so results flow directly back into the LLM context
+
+**Possible Solutions:**
+
+**Option A: Accept synchronous blocking (v1 - simplest)**
+- Keep current HTTP POST blocking approach
+- Voice prompt instructs agent to say filler phrase ("Let me look into that")
+- Client shows a spinner/indicator while waiting
+- Increase HTTP timeout for task tool calls
+- Risk: Very long tasks may still timeout
+
+**Option B: SSE subscription during tool calls**
+- Client subscribes to SSE for the subagent's session
+- Shows progress in UI while waiting for HTTP response
+- Still blocks on HTTP for the final result
+- More complex but better UX
+
+**Option C: Async tool execution with polling**
+- `POST /tool/call` returns immediately with a `taskID`
+- Client polls or subscribes to SSE for completion
+- When done, client sends `function_call_output` to OpenAI
+- Most complex but most robust
+
+**Recommended: Option A for v1, then Option B for v2.**
+
+---
+
+#### Phase 4e-6: Testing & Validation
 
 **Test 1: Model Inheritance**
 - [ ] Call `/session/:id/tool/call` with model `anthropic/claude-sonnet`
@@ -938,7 +992,7 @@ Created condensed voice prompt that:
 - [ ] Ask "What files are in the src folder?"
 - [ ] Verify: Voice agent uses task tool (not glob directly per prompt guidance)
 - [ ] Verify: Subagent runs on text model
-- [ ] Verify: Voice speaks summary
+- [ ] Verify: Voice speaks summary of task result
 
 **Test 3: Handoff Voice → Text**
 - [ ] Start voice call, invoke task
@@ -956,6 +1010,7 @@ Created condensed voice prompt that:
 - [ ] Start voice call
 - [ ] Request complex multi-file analysis
 - [ ] Verify: Voice says filler phrase, waits for completion
+- [ ] Verify: Voice speaks result summary when done
 - [ ] Measure: Time to completion, token usage
 
 ---
@@ -966,6 +1021,7 @@ Created condensed voice prompt that:
 - [x] Task tool inherits correct model, subagent spawns successfully
 - [x] Voice agent uses only glob, grep, task tools
 - [x] Voice system prompt uses condensed prompt optimized for delegation
+- [ ] Voice agent speaks subagent result after task completes
 - [ ] Token usage stays under 40k TPM with subagent delegation
 - [ ] Seamless handoffs between voice ↔ text modes
 - [ ] Same UX for subagent in voice as in regular mode
@@ -975,9 +1031,12 @@ Created condensed voice prompt that:
 | Risk | Mitigation |
 |------|------------|
 | Latency from subagent call | Task tool blocks synchronously; use fast model for subagent |
+| HTTP timeout during long tasks | Increase timeout for tool/call; voice prompt says filler phrase |
+| No progress feedback during task | v1: filler phrase + spinner; v2: SSE subscription for subagent session |
 | Token limits with full env files | Monitor usage; truncate AGENTS.md if needed |
 | Subagent errors not surfaced | Return clear error messages; voice speaks error summary |
 | Model mismatch in handoffs | Always pass explicit model; never rely on "client" |
+| Voice agent doesn't speak result | Verify OpenAI Realtime generates spoken response from function_call_output |
 
 ---
 
