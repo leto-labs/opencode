@@ -10,6 +10,10 @@ import { Instance } from "../../src/project/instance"
 const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
 
+// Default model and agent for tests
+const TEST_MODEL = { providerID: "openai", modelID: "gpt-4" }
+const TEST_AGENT = "default"
+
 describe("SessionTool", () => {
   describe("list", () => {
     test("should return tools in OpenAI function format", async () => {
@@ -82,6 +86,8 @@ describe("SessionTool", () => {
             toolName: "nonexistent_tool",
             callId: "call_123",
             arguments: {},
+            model: TEST_MODEL,
+            agent: TEST_AGENT,
           })
 
           expect(result.callId).toBe("call_123")
@@ -103,6 +109,8 @@ describe("SessionTool", () => {
               toolName: "read",
               callId: "call_123",
               arguments: { filePath: "/tmp/test.txt" },
+              model: TEST_MODEL,
+              agent: TEST_AGENT,
             }),
           ).rejects.toThrow()
         },
@@ -128,6 +136,8 @@ describe("SessionTool", () => {
             toolName: "read",
             callId: "call_456",
             arguments: { filePath: path.join(projectRoot, "package.json") },
+            model: TEST_MODEL,
+            agent: TEST_AGENT,
           })
 
           expect(result.callId).toBe("call_456")
@@ -170,6 +180,8 @@ describe("SessionTool", () => {
             toolName: "read",
             callId: "call_789",
             arguments: { filePath: path.join(projectRoot, "package.json") },
+            model: TEST_MODEL,
+            agent: TEST_AGENT,
           })
 
           // Verify the assistant message has the correct parentID
@@ -197,6 +209,8 @@ describe("SessionTool", () => {
             toolName: "read",
             callId: "call_error",
             arguments: { filePath: "/nonexistent/path/to/file.txt" },
+            model: TEST_MODEL,
+            agent: TEST_AGENT,
           })
 
           expect(result.callId).toBe("call_error")
@@ -233,6 +247,8 @@ describe("SessionTool", () => {
             toolName: "read",
             callId: "call_timestamp",
             arguments: { filePath: path.join(projectRoot, "package.json") },
+            model: TEST_MODEL,
+            agent: TEST_AGENT,
           })
 
           const updatedSession = await Session.get(session.id)
@@ -285,6 +301,8 @@ describe("SessionTool", () => {
             toolName: "read",
             callId: "call_workflow",
             arguments: { filePath: path.join(projectRoot, "package.json") },
+            model: TEST_MODEL,
+            agent: TEST_AGENT,
           })
           expect(toolResult.result).toBeDefined()
           expect(toolResult.error).toBeUndefined()

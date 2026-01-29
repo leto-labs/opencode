@@ -1,6 +1,6 @@
 # Phase 4: Voice Tool Calling
 
-**Status: IN PROGRESS - ARCHITECTURE REVISION NEEDED**
+**Status: IN PROGRESS - Phase 4e-4 complete, testing Phase 4e-5**
 
 ## PRD
 
@@ -528,6 +528,12 @@ The above implementation works but hits gpt-4o-realtime's 40k TPM limit quickly.
    - Current architecture hits this limit quickly with file reads
    - **Solution**: Subagent architecture (see above)
 
+6. **Message history compaction?** 🔄 TODO (Future)
+   - Voice mode now loads ALL messages to match regular agent behavior
+   - Backend uses `MessageV2.filterCompacted()` to stop at compaction/summarization points
+   - Voice mode should implement similar logic to avoid loading redundant summarized history
+   - This ensures both modes have equivalent context handling
+
 ---
 
 ## Success Criteria
@@ -660,52 +666,63 @@ execute: async (args, ctx) => {
 
 ### Tasks
 
-#### Phase 4e-1: Simplified Dual Model Refactor
+#### Phase 4e-1: Simplified Dual Model Refactor ✅ COMPLETED
 
-**3 files to modify, no new state:**
+**3 files modified, no new state:**
 
-**File 1: `packages/app/src/context/local.tsx`**
-- [ ] Lines 147-152: Remove `GPT_REALTIME_MODEL` from `listWithClientSide` array
-  ```typescript
-  // Before: return [...baseList, GPT_REALTIME_MODEL as ...]
-  // After:  return baseList
-  ```
+**File 1: `packages/app/src/context/local.tsx`** ✅
+- [x] Removed `GPT_REALTIME_MODEL` constant entirely
+- [x] Removed `CLIENT_SIDE_MODEL_ID` and `CLIENT_SIDE_PROVIDER_ID` constants
+- [x] Removed `ClientSideModelProps` type
+- [x] Removed `isOpenAIConnected` memo
+- [x] Removed `findWithClientSide` wrapper - now uses `models.find()` directly
+- [x] Simplified `listWithClientSide` to return `models.list()` directly
 - Result: Model picker shows only text models (GPT Realtime no longer appears)
 
-**File 2: `packages/app/src/context/voice-mode.tsx`**
-- [ ] Line 35: DELETE `isVoiceModel` (only used by auto-connect effects we're removing)
-- [ ] Lines 263-268: DELETE `onMount` auto-connect block
-- [ ] Lines 271-288: DELETE `createEffect` model-change watcher
+**File 2: `packages/app/src/context/voice-mode.tsx`** ✅
+- [x] Deleted `isVoiceModel` (only used by auto-connect effects)
+- [x] Deleted `onMount` auto-connect block
+- [x] Deleted `createEffect` model-change watcher
+- [x] Removed unused imports (`onMount`, `createEffect`, `on`, `useLocal`)
 - Result: Voice mode no longer auto-connects; user must manually start call
 
-**File 3: `packages/app/src/components/prompt-input.tsx`**
-- [ ] Line 237: Change `isVoiceModel` condition
+**File 3: `packages/app/src/components/prompt-input.tsx`** ✅
+- [x] Changed `isVoiceModel` to `isVoiceModeAvailable`:
   ```typescript
-  // Before: local.model.current()?.voice === true
-  // After:  providers.connected().some(p => p.id === "openai")
+  const isVoiceModeAvailable = createMemo(() => providers.connected().some((p) => p.id === "openai"))
   ```
-- [ ] Lines 1615-1646: Simplify `send` function routing
+- [x] Simplified `send` function routing:
   ```typescript
-  // Before: if (currentModel?.clientSide) { ... if (currentModel?.voice) ... }
-  // After:  if (voiceMode.status() === "connected") { ... }
+  if (voiceMode.status() === "connected") {
+    // Voice call active - store transcript and send to realtime
+    await client.session.transcript.add({...})
+    voiceMode.sendText(text)
+  } else {
+    // No voice call - send to regular model via server
+    await client.session.prompt({...})
+  }
   ```
-  - Uses existing `voiceMode.status()` state (already used at line 2101)
-  - If connected: store transcript + send via `voiceMode.sendText()`
-  - If not connected: send via `client.session.prompt()` (regular API)
+
+**File 4: `packages/app/src/hooks/use-realtime-connection.ts`** ✅
+- [x] Tools temporarily disabled for dual agent testing
+- [x] Message history limit removed - now loads ALL messages to match regular agent
 
 **Verification needed (may require changes):**
 
-- [ ] **History injection** (`use-realtime-connection.ts` lines 349-353):
+- [x] **History injection** (`use-realtime-connection.ts` lines 349-353):
   - When call starts, `loadConversationHistory()` fetches session messages
   - `session.updateHistory()` injects them into realtime context
   - Verify: realtime agent sees prior text conversation
-  - May need changes if history format doesn't match realtime expectations
+  - ✅ Now loads ALL messages (no limit) to match regular agent behavior
+  - **TODO (Future)**: Implement compaction awareness - stop at compaction markers like backend does
+    - Backend uses `MessageV2.filterCompacted()` which stops at summarization points
+    - Voice mode should respect these markers to avoid loading redundant history
 
-- [ ] **Transcript storage** (`voice-mode.tsx` lines 44-75, 178-201):
+- [x] **Transcript storage** (`voice-mode.tsx`):
   - During call, `storeTranscript()` calls `session.transcript.add()`
-  - Critical: Does this properly integrate with session message history?
-  - When call ends, regular model must see voice conversation
-  - May need changes if transcript isn't visible to regular model
+  - ✅ `addAssistantMessageToUI` and `addUserMessageToUI` now use current text model
+  - ✅ Messages use same `modelID`/`providerID`/`agent` as regular agent
+  - Result: Unified transcript - voice and text messages look identical
 
 #### Phase 4e-1 Testing (Chrome plugin, text input OK)
 
@@ -732,42 +749,261 @@ execute: async (args, ctx) => {
 
 ---
 
-#### Phase 4e-2: Tool Filtering for Token Limits (After 4e-1)
+#### Phase 4e-2: Align SessionTool.call with Regular Agent Flow ✅ COMPLETED
 
-- [ ] `packages/app/src/hooks/use-realtime-connection.ts`
-  - Update `VOICE_SAFE_TOOLS` to only: `glob`, `grep`, `task`
-  - Remove: `read`, `write`, `edit`, `bash`, `webfetch`, `websearch`, `codesearch`
+**Problem solved:** `SessionTool.call` was using hardcoded `"client"` values, causing task tool to fail.
 
-- [ ] Create condensed voice system prompt
-  - Shorter than full OpenCode prompt
-  - Instructs agent to use `task` tool for complex operations
+**Changes made:**
 
-- [ ] Test: voice → task tool → subagent uses session's text model
+**Backend: `packages/opencode/src/session/tool.ts`** ✅
+- [x] Updated `CallInput` schema to include `model` and `agent` parameters
+- [x] Assistant message now uses `input.model.modelID/providerID` instead of `"client"`
+- [x] Mode changed from `"client"` to `"build"`
+- [x] Tool context uses `input.agent` instead of `"client"`
+- [x] `ToolRegistry.tools()` uses provided model for tool selection
+
+**SDK regenerated** ✅
+- [x] Ran `bun run build` in `packages/sdk/js` to regenerate types
+
+**Frontend: `packages/app/src/util/openai-realtime-tool.ts`** ✅
+- [x] Added `model` and `agent` to `CreateAgentToolsOptions` interface
+- [x] Tool calls now pass `model` and `agent` to server
+
+**Frontend: `packages/app/src/hooks/use-realtime-connection.ts`** ✅
+- [x] Added `model` and `agent` to `RealtimeConnectionConfig` interface
+- [x] Updated commented tool creation code to show usage
+
+**Frontend: `packages/app/src/context/voice-mode.tsx`** ✅
+- [x] Added `useLocal` import and `currentModel()`/`currentAgent()` memos
+- [x] Pass `model` and `agent` to `useRealtimeConnection` hook
+- [x] Updated `addAssistantMessageToUI` to use current text model (not hardcoded "gpt-realtime")
+- [x] Updated `addUserMessageToUI` to use current text model (not hardcoded "gpt-realtime")
+- Result: Voice transcripts use same model info as regular messages - unified transcript
+
+**Tests: `packages/opencode/test/session/tool.test.ts`** ✅
+- [x] Updated all `SessionTool.call` invocations with required `model` and `agent` parameters
+
+**Solution:** Make `SessionTool.call` accept actual model/agent info, mirroring `SessionPrompt.prompt`:
+
+**File: `packages/opencode/src/session/tool.ts`**
+
+- [ ] **Update CallInput schema** (lines 117-122):
+  ```typescript
+  export const CallInput = z.object({
+    sessionID: Identifier.schema("session"),
+    toolName: z.string(),
+    callId: z.string(),
+    arguments: z.record(z.string(), z.any()),
+    // NEW: Match SessionPrompt.prompt parameters
+    model: z.object({
+      providerID: z.string(),
+      modelID: z.string(),
+    }),
+    agent: z.string().optional().default("default"),
+  })
+  ```
+
+- [ ] **Update assistant message creation** (lines 167-181):
+  ```typescript
+  const assistantMessage: MessageV2.Assistant = {
+    id: messageID,
+    role: "assistant",
+    sessionID,
+    time: { created: startTime },
+    parentID,
+    modelID: input.model.modelID,      // ← From input
+    providerID: input.model.providerID, // ← From input
+    mode: "build",                       // ← Standard mode
+    agent: input.agent,                  // ← From input
+    path: { cwd: Instance.directory, root: Instance.worktree },
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+  }
+  ```
+
+- [ ] **Update Tool.Context** (lines 203-212):
+  ```typescript
+  const ctx: Tool.Context = {
+    sessionID,
+    messageID,
+    agent: input.agent,  // ← From input (was "client")
+    abort: abortController.signal,
+    callID: callId,
+    messages,
+    metadata: () => {},
+    ask: async () => {},
+  }
+  ```
+
+- [ ] **Update ToolRegistry lookup** (line 151):
+  ```typescript
+  // Before: hardcoded "openai/gpt-4"
+  const allTools = await ToolRegistry.tools({ providerID: "openai", modelID: "gpt-4" })
+
+  // After: use provided model
+  const allTools = await ToolRegistry.tools(input.model)
+  ```
+
+**File: `packages/opencode/src/server/routes/session.ts`**
+
+- [ ] **Update route schema** (around line 1090):
+  Add `model` and `agent` to the request body validation
+
+**File: `packages/app/src/util/openai-realtime-tool.ts`**
+
+- [ ] **Pass model/agent in tool calls** (lines 75-80):
+  ```typescript
+  const response = await sdk.client.session.tool.call({
+    sessionID,
+    toolName: definition.name,
+    callId,
+    arguments: input as Record<string, unknown>,
+    model: options.model,   // NEW: Pass from connection config
+    agent: options.agent,   // NEW: Pass from connection config
+  })
+  ```
+
+**File: `packages/app/src/hooks/use-realtime-connection.ts`**
+
+- [ ] **Store and pass model/agent to tool calls**:
+  - Get model from `local.model.current()` when connecting
+  - Get agent from `local.agent.current()` when connecting
+  - Pass to `toOpenAIAgentTools()` options
+
+**Result:**
+- Task tool inherits real model (e.g., `anthropic/claude-sonnet`)
+- Subagent spawns with correct model
+- Tool registry uses correct model for tool selection
+- Messages look identical to regular agent flow
 
 ---
 
-#### Phase 4e-3: Polish (After 4e-2)
+#### Phase 4e-3: Enable Task Tool for Voice ✅ COMPLETED
 
-- [ ] Handle subagent errors gracefully in voice mode
-- [ ] Test end-to-end: voice → task tool → subagent (text model) → result
-- [ ] Consider UX improvements (loading indicators, error messages)
+**File: `packages/opencode/src/session/tool.ts`**
+
+- [x] **Add task to VOICE_MODE_TOOLS** (line 48-52):
+  ```typescript
+  const VOICE_MODE_TOOLS = new Set([
+    "glob",   // Lightweight - returns paths only
+    "grep",   // Lightweight - returns matching lines
+    "task",   // Subagent delegation - key for voice orchestrator pattern
+  ])
+  ```
+
+- [x] **Updated comment** (lines 26-46) documenting the voice mode tools philosophy
+
+---
+
+#### Phase 4e-4: Voice System Prompt ✅ COMPLETED
+
+**Goal:** Give voice agent a condensed prompt optimized for delegation
+
+**File: `packages/opencode/src/session/system.ts`** ✅
+
+- [x] **Added voice-specific prompt support**:
+  ```typescript
+  import PROMPT_VOICE from "./prompt/voice.txt"
+
+  export function provider(model: Provider.Model) {
+    if (model.api.id.includes("gpt-5")) return [PROMPT_CODEX]
+    // Voice/realtime mode uses a condensed prompt optimized for delegation
+    if (model.api.id.includes("realtime")) return [PROMPT_VOICE]
+    if (model.api.id.includes("gpt-") || ...) return [PROMPT_BEAST]
+    ...
+  }
+  ```
+
+**File: `packages/opencode/src/session/prompt/voice.txt`** ✅ (NEW)
+
+Created condensed voice prompt that:
+- Explains the orchestrator role (delegate complex work to task tool)
+- Lists available tools (glob, grep, task)
+- Provides clear examples of when to use task vs direct tools
+- Encourages conversational, brief responses
+
+**No changes needed to frontend** - existing code requests system prompt with `modelID: "gpt-realtime"`, which now returns the voice-specific prompt
+
+---
+
+#### Phase 4e-5: Testing & Validation
+
+**Test 1: Model Inheritance**
+- [ ] Call `/session/:id/tool/call` with model `anthropic/claude-sonnet`
+- [ ] Verify assistant message has correct modelID/providerID
+- [ ] Trigger task tool, verify subagent uses same model
+
+**Test 2: Voice → Task Flow**
+- [ ] Start voice call
+- [ ] Ask "What files are in the src folder?"
+- [ ] Verify: Voice agent uses task tool (not glob directly per prompt guidance)
+- [ ] Verify: Subagent runs on text model
+- [ ] Verify: Voice speaks summary
+
+**Test 3: Handoff Voice → Text**
+- [ ] Start voice call, invoke task
+- [ ] End voice call
+- [ ] Send text message
+- [ ] Verify: Regular agent sees voice transcripts + subagent results
+
+**Test 4: Handoff Text → Voice**
+- [ ] Send text message with tool calls
+- [ ] Start voice call
+- [ ] Verify: Voice agent loads history including tool results
+- [ ] Invoke task, verify same model used
+
+**Test 5: Long-Running Task**
+- [ ] Start voice call
+- [ ] Request complex multi-file analysis
+- [ ] Verify: Voice says filler phrase, waits for completion
+- [ ] Measure: Time to completion, token usage
+
+---
 
 ### Success Criteria
 
-- [ ] Realtime agent only uses glob, grep, subagent tools
-- [ ] Subagent executes on Anthropic Haiku (not client/realtime)
-- [ ] Token usage stays well under 40k TPM
-- [ ] File reads work via subagent delegation
-- [ ] Response quality maintained despite indirection
+- [x] SessionTool.call creates messages with real model/agent (not "client")
+- [x] Task tool inherits correct model, subagent spawns successfully
+- [x] Voice agent uses only glob, grep, task tools
+- [x] Voice system prompt uses condensed prompt optimized for delegation
+- [ ] Token usage stays under 40k TPM with subagent delegation
+- [ ] Seamless handoffs between voice ↔ text modes
+- [ ] Same UX for subagent in voice as in regular mode
 
 ### Risks & Mitigations
 
 | Risk | Mitigation |
 |------|------------|
-| Latency increase from subagent call | Use fast model (Haiku), optimize prompts |
-| Loss of context between realtime ↔ subagent | Pass conversation summary to subagent |
-| Subagent errors not surfaced well | Return clear error messages to realtime |
-| Cost of running two models | Haiku is cheap, saves on realtime TPM |
+| Latency from subagent call | Task tool blocks synchronously; use fast model for subagent |
+| Token limits with full env files | Monitor usage; truncate AGENTS.md if needed |
+| Subagent errors not surfaced | Return clear error messages; voice speaks error summary |
+| Model mismatch in handoffs | Always pass explicit model; never rely on "client" |
+
+---
+
+## ChatSupervisor Pattern Reference
+
+The OpenAI `chatSupervisor` example (`tmp/openai-realtime-agents/src/app/agentConfigs/chatSupervisor/`) demonstrates:
+
+**Junior Agent (Realtime):**
+- Minimal capabilities, delegates everything to supervisor
+- Says filler phrase before calling supervisor ("Just a second")
+- Reads supervisor response verbatim
+
+**Supervisor Agent (Text):**
+- Full tool access
+- Gets conversation history + context
+- Returns formatted message
+
+**Key Differences from Our Approach:**
+| Aspect | chatSupervisor | OpenCode Voice |
+|--------|----------------|----------------|
+| Delegation | Always delegate | Delegate for complex, handle simple directly |
+| Tools | Custom supervisor tool | Existing task tool |
+| Model selection | Hardcoded gpt-4.1 | Session's selected text model |
+| Response | Read verbatim | Summarize naturally |
+
+**Async Tasks:** chatSupervisor is synchronous (blocks). For v1, we follow the same pattern. Future: could implement background tasks with polling.
 
 ---
 

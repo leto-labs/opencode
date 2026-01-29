@@ -3870,6 +3870,11 @@ export type SessionToolCallData = {
     arguments: {
       [key: string]: unknown
     }
+    model: {
+      providerID: string
+      modelID: string
+    }
+    agent?: string
   }
   path: {
     /**

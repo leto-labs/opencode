@@ -23,29 +23,32 @@ export namespace SessionTool {
   const log = Log.create({ service: "session.tool" })
 
   /**
-   * Tools that are safe to use in voice/realtime mode.
+   * Tools safe for voice/realtime mode.
    *
-   * Excluded tools:
-   * - task: spawns sub-agents requiring real provider/model
+   * Voice agent acts as orchestrator with minimal tools.
+   * Heavy operations are delegated via task tool to a text subagent.
+   *
+   * Included:
+   * - glob: Find files by pattern, returns paths only
+   * - grep: Search file contents, returns matching lines
+   * - task: Delegate complex work to text subagent (uses session's selected model)
+   *
+   * Excluded (delegated via task tool instead):
+   * - read, write, edit: Large outputs, can pollute context
+   * - bash: Unbounded output
+   * - webfetch, websearch, codesearch: Complex, large outputs
+   *
+   * Also excluded:
    * - question: requires interactive UI
    * - batch: spawns multiple operations
-   * - invalid: internal error handling tool
-   * - plan_enter, plan_exit: plan mode requires UI interaction
-   * - skill: might have interactive requirements
-   * - todo_write, todo_read: noisy for voice, less useful
-   * - apply_patch: complex tool, less suitable for voice
-   * - lsp: experimental, complex
+   * - plan_enter, plan_exit: plan mode requires UI
+   * - skill, todo_write, todo_read: noisy for voice
+   * - apply_patch, lsp: complex
    */
   const VOICE_MODE_TOOLS = new Set([
-    "read",
     "glob",
     "grep",
-    "write",
-    "edit",
-    "bash",
-    "webfetch",
-    "websearch",
-    "codesearch",
+    "task",
   ])
 
   /**
@@ -113,12 +116,22 @@ export namespace SessionTool {
 
   /**
    * Input schema for calling a tool.
+   *
+   * Accepts model and agent to align with regular SessionPrompt.prompt flow.
+   * This ensures task tool inheritance works correctly (subagent uses real model).
    */
   export const CallInput = z.object({
     sessionID: Identifier.schema("session"),
     toolName: z.string(),
     callId: z.string(),
     arguments: z.record(z.string(), z.any()),
+    /** Model to use for tool execution and inheritance (e.g., task tool subagents) */
+    model: z.object({
+      providerID: z.string(),
+      modelID: z.string(),
+    }),
+    /** Agent name for tool context */
+    agent: z.string().optional().default("default"),
   })
   export type CallInput = z.infer<typeof CallInput>
 
@@ -137,9 +150,13 @@ export namespace SessionTool {
    *
    * Creates an assistant message to hold the tool call, executes the tool,
    * and updates the tool part with the result or error.
+   *
+   * Aligned with regular SessionPrompt.prompt flow:
+   * - Uses provided model/agent (not hardcoded "client")
+   * - Task tool will inherit these values for subagent spawning
    */
   export const call = fn(CallInput, async (input): Promise<CallOutput> => {
-    const { sessionID, toolName, callId, arguments: args } = input
+    const { sessionID, toolName, callId, arguments: args, model, agent } = input
 
     // Verify session exists
     const session = await Session.get(sessionID)
@@ -147,8 +164,8 @@ export namespace SessionTool {
       throw new Error(`Session not found: ${sessionID}`)
     }
 
-    // Find the tool
-    const allTools = await ToolRegistry.tools({ providerID: "openai", modelID: "gpt-4" })
+    // Find the tool using provided model for proper tool selection
+    const allTools = await ToolRegistry.tools(model)
     const tool = allTools.find((t) => t.id === toolName)
     if (!tool) {
       return { callId, result: null, error: `Tool not found: ${toolName}` }
@@ -165,16 +182,18 @@ export namespace SessionTool {
     const parentID = lastUserMsg?.info.id ?? messageID
 
     // Create assistant message to hold the tool call
+    // Uses provided model/agent to align with regular agent flow
+    // This ensures task tool inherits correct model for subagent spawning
     const assistantMessage: MessageV2.Assistant = {
       id: messageID,
       role: "assistant",
       sessionID,
       time: { created: startTime },
       parentID,
-      modelID: "client",
-      providerID: "client",
-      mode: "client",
-      agent: "client",
+      modelID: model.modelID,
+      providerID: model.providerID,
+      mode: "build",
+      agent,
       path: { cwd: Instance.directory, root: Instance.worktree },
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -198,12 +217,12 @@ export namespace SessionTool {
     }
     await Session.updatePart(toolPart)
 
-    // Execute the tool
+    // Execute the tool with proper agent context
     const abortController = new AbortController()
     const ctx: Tool.Context = {
       sessionID,
       messageID,
-      agent: "client",
+      agent,
       abort: abortController.signal,
       callID: callId,
       messages,

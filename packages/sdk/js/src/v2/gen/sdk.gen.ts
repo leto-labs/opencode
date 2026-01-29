@@ -980,6 +980,11 @@ export class Tool2 extends HeyApiClient {
       arguments?: {
         [key: string]: unknown
       }
+      model?: {
+        providerID: string
+        modelID: string
+      }
+      agent?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -993,6 +998,8 @@ export class Tool2 extends HeyApiClient {
             { in: "body", key: "toolName" },
             { in: "body", key: "callId" },
             { in: "body", key: "arguments" },
+            { in: "body", key: "model" },
+            { in: "body", key: "agent" },
           ],
         },
       ],

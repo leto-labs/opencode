@@ -30,6 +30,10 @@ export interface CreateAgentToolsOptions {
   sessionID: string
   /** SDK client for calling server endpoints */
   sdk: { client: OpencodeClient }
+  /** Model to use for tool execution (enables task tool subagent inheritance) */
+  model: { providerID: string; modelID: string }
+  /** Agent name for tool context */
+  agent?: string
   /** Callback when tool execution starts (for UI feedback) */
   onExecute?: (toolName: string, args: unknown) => void
   /** Callback when tool execution completes */
@@ -47,7 +51,7 @@ export interface CreateAgentToolsOptions {
  * @returns An executable tool compatible with @openai/agents/realtime
  */
 export function toOpenAIAgentTool(definition: ServerToolDefinition, options: CreateAgentToolsOptions) {
-  const { sessionID, sdk, onExecute, onComplete } = options
+  const { sessionID, sdk, model, agent, onExecute, onComplete } = options
 
   // Clean up parameters - remove $schema property that Zod adds
   // OpenAI SDK doesn't expect this property
@@ -55,6 +59,8 @@ export function toOpenAIAgentTool(definition: ServerToolDefinition, options: Cre
 
   console.log(`[toOpenAIAgentTool] creating tool: ${definition.name}`, {
     parameters: cleanParameters,
+    model,
+    agent,
   })
 
   return tool({
@@ -64,19 +70,22 @@ export function toOpenAIAgentTool(definition: ServerToolDefinition, options: Cre
     execute: async (input, _details) => {
       const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
 
-      console.log(`[tool:${definition.name}] executing`, { callId, input })
+      console.log(`[tool:${definition.name}] executing`, { callId, input, model, agent })
 
       // Notify UI that execution is starting
       onExecute?.(definition.name, input)
 
       try {
         // Call server to execute the tool
-        // Note: SDK is configured with throwOnError: true, so errors throw
+        // Pass model and agent to align with regular agent flow
+        // This enables task tool to inherit correct model for subagent spawning
         const response = await sdk.client.session.tool.call({
           sessionID,
           toolName: definition.name,
           callId,
           arguments: input as Record<string, unknown>,
+          model,
+          agent,
         })
 
         const result = response.data?.result

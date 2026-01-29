@@ -9,6 +9,10 @@ export type RealtimeStatus = "disconnected" | "connecting" | "connected" | "erro
 export interface RealtimeConnectionConfig {
   /** Output modalities for the session */
   outputModalities?: ("text" | "audio")[]
+  /** Model for tool execution - enables task tool subagent inheritance */
+  model?: { providerID: string; modelID: string }
+  /** Agent name for tool context */
+  agent?: string
   /** Callback when transport events occur */
   onTransportEvent?: (event: { type: string; [key: string]: unknown }) => void
   /** Callback when history is added */
@@ -131,9 +135,10 @@ export function useRealtimeConnection(
     if (!sid) return null
 
     try {
+      // Load all messages to match regular agent behavior
+      // TODO: Implement compaction awareness for voice mode (respect summarization markers)
       const response = await sdk.client.session.messages({
         sessionID: sid,
-        limit: 20,
       })
 
       if (response.error || !response.data) {
@@ -228,17 +233,20 @@ export function useRealtimeConnection(
         return
       }
 
-      // Fetch system prompt from server
-      const instructions = await fetchSystemPrompt()
+      // Fetch tools and system prompt in parallel
+      const [toolDefinitions, instructions] = await Promise.all([fetchToolDefinitions(), fetchSystemPrompt()])
 
-      // TEMPORARILY DISABLED: Tools are disabled while we test dual agent flow
-      // TODO: Re-enable tools after dual agent flow is working
-      // const [allToolDefinitions, instructions] = await Promise.all([fetchToolDefinitions(), fetchSystemPrompt()])
-      // const VOICE_SAFE_TOOLS = new Set(["glob", "grep", "task"])
-      // const toolDefinitions = allToolDefinitions.filter((t) => VOICE_SAFE_TOOLS.has(t.name))
-      // const tools = toOpenAIAgentTools(toolDefinitions, { sessionID: sid, sdk, ... })
-      const tools: ReturnType<typeof toOpenAIAgentTools> = []
-      console.log("[realtime] tools disabled for testing dual agent flow")
+      // Create executable tools if model is provided
+      // Tools are filtered server-side to only include voice-safe tools (glob, grep)
+      const tools = config.model
+        ? toOpenAIAgentTools(toolDefinitions, {
+            sessionID: sid,
+            sdk,
+            model: config.model,
+            agent: config.agent,
+          })
+        : []
+      console.log("[realtime] tools enabled:", toolDefinitions.map((t) => t.name).join(", ") || "(none)")
 
       // Check if connection was aborted during async operation
       if (connectAborted) {

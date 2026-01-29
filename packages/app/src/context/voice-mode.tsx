@@ -1,8 +1,9 @@
-import { createSignal } from "solid-js"
+import { createSignal, createMemo } from "solid-js"
 import { produce } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSDK } from "@/context/sdk"
+import { useLocal } from "@/context/local"
 import { useRealtimeConnection } from "@/hooks/use-realtime-connection"
 import { Identifier } from "@/utils/id"
 import { Binary } from "@opencode-ai/util/binary"
@@ -20,6 +21,7 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
   init: (props: VoiceModeProps) => {
     const globalSync = useGlobalSync()
     const sdk = useSDK()
+    const local = useLocal()
 
     // Audio state - both enabled by default when session starts
     const [micMuted, setMicMuted] = createSignal(false)
@@ -28,6 +30,15 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
     // Session ID and directory from context
     const sessionID = () => props.sessionID
     const directory = () => sdk.directory
+
+    // Get current model and agent for tool execution
+    // This enables task tool subagent inheritance (uses real model, not "client")
+    const currentModel = createMemo(() => {
+      const model = local.model.current()
+      if (!model) return undefined
+      return { providerID: model.provider.id, modelID: model.id }
+    })
+    const currentAgent = createMemo(() => local.agent.current()?.name ?? "default")
 
     // Helper to get output modalities based on speaker state
     // OpenAI only supports ["text"] OR ["audio"], not both
@@ -70,9 +81,12 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
     }
 
     // Add assistant message to sync store for immediate UI update
+    // Uses current text model for consistency - once in transcript, source doesn't matter
     const addAssistantMessageToUI = (text: string) => {
       const sid = sessionID()
       const dir = directory()
+      const model = currentModel()
+      const agent = currentAgent()
       if (!sid || !dir || !text.trim()) return
 
       const messageID = Identifier.ascending("message")
@@ -84,10 +98,10 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
         role: "assistant" as const,
         time: { created: Date.now() },
         parentID: "",
-        modelID: "gpt-realtime",
-        providerID: "openai",
+        modelID: model?.modelID ?? "gpt-4",
+        providerID: model?.providerID ?? "openai",
         mode: "build",
-        agent: "default",
+        agent,
         path: { cwd: dir, root: dir },
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -123,9 +137,12 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
     }
 
     // Add user message to sync store for immediate UI update
+    // Uses current text model for consistency - once in transcript, source doesn't matter
     const addUserMessageToUI = (text: string) => {
       const sid = sessionID()
       const dir = directory()
+      const model = currentModel()
+      const agent = currentAgent()
       if (!sid || !dir || !text.trim()) return null
 
       const messageID = Identifier.ascending("message")
@@ -136,8 +153,8 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
         sessionID: sid,
         role: "user" as const,
         time: { created: Date.now() },
-        agent: "default",
-        model: { providerID: "openai", modelID: "gpt-realtime" },
+        agent,
+        model: model ?? { providerID: "openai", modelID: "gpt-4" },
       } as UserMessage
 
       const part = {
@@ -216,8 +233,11 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
     }
 
     // Use the realtime connection hook
+    // Pass model and agent for tool execution (enables task tool subagent inheritance)
     const connection = useRealtimeConnection(sessionID, {
       outputModalities: getOutputModalities(),
+      model: currentModel(),
+      agent: currentAgent(),
       onTransportEvent: handleTransportEvent,
       onHistoryAdded: handleHistoryAdded,
     })
