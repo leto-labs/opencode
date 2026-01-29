@@ -87,32 +87,32 @@ The realtime architecture uses a **direct client connection** model where the we
 
 ### Web Client
 
-| Component | Responsibility |
-|-----------|----------------|
-| `useRealtime` | SDK lifecycle, state management |
-| `useAudioCapture` | Microphone → PCM16 → SDK |
-| `useAudioPlayback` | SDK → PCM16 → Speaker |
-| Transcript sync | POST events to server (debounced) |
-| Tool forwarding | POST function calls to server |
+| Component          | Responsibility                    |
+| ------------------ | --------------------------------- |
+| `useRealtime`      | SDK lifecycle, state management   |
+| `useAudioCapture`  | Microphone → PCM16 → SDK          |
+| `useAudioPlayback` | SDK → PCM16 → Speaker             |
+| Transcript sync    | POST events to server (debounced) |
+| Tool forwarding    | POST function calls to server     |
 
 ### OpenCode Server
 
-| Endpoint | Responsibility |
-|----------|----------------|
+| Endpoint                          | Responsibility                  |
+| --------------------------------- | ------------------------------- |
 | `POST /session/:id/client_secret` | Generate ephemeral key (cached) |
-| `GET /session/:id/client_secret` | Get cached ephemeral key |
-| `POST /session/:id/transcript` | Persist transcript parts |
-| `GET /session/:id/message` | Retrieve message history |
-| `POST /session/:id/tool/call` | Execute tool, return result |
+| `GET /session/:id/client_secret`  | Get cached ephemeral key        |
+| `POST /session/:id/transcript`    | Persist transcript parts        |
+| `GET /session/:id/message`        | Retrieve message history        |
+| `POST /session/:id/tool/call`     | Execute tool, return result     |
 
 ### OpenAI Realtime API
 
-| Feature | Responsibility |
-|---------|----------------|
-| Audio processing | Native audio understanding (not STT) |
-| Response generation | LLM reasoning + audio synthesis |
-| VAD | Detect speech start/end, handle interruptions |
-| Function calling | Generate tool calls, wait for results |
+| Feature             | Responsibility                                |
+| ------------------- | --------------------------------------------- |
+| Audio processing    | Native audio understanding (not STT)          |
+| Response generation | LLM reasoning + audio synthesis               |
+| VAD                 | Detect speech start/end, handle interruptions |
+| Function calling    | Generate tool calls, wait for results         |
 
 ## Why Direct Connection?
 
@@ -219,8 +219,8 @@ Realtime conversations integrate with existing opencode sessions:
 ## Audio Format
 
 | Direction | Format | Sample Rate | Channels | Encoding |
-|-----------|--------|-------------|----------|----------|
-| Input | PCM16 | 24kHz | Mono | base64 |
-| Output | PCM16 | 24kHz | Mono | base64 |
+| --------- | ------ | ----------- | -------- | -------- |
+| Input     | PCM16  | 24kHz       | Mono     | base64   |
+| Output    | PCM16  | 24kHz       | Mono     | base64   |
 
 The SDK handles encoding/decoding. Client uses Web Audio API for capture/playback.

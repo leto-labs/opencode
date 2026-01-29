@@ -5,6 +5,7 @@ This document describes the process for adding new API endpoints to OpenCode. Fo
 ## Overview
 
 OpenCode uses a **generated SDK pattern**:
+
 1. Server routes are defined with OpenAPI annotations (via `hono-openapi`)
 2. An OpenAPI spec is extracted from the server
 3. `@hey-api/openapi-ts` generates TypeScript client code from the spec
@@ -36,7 +37,7 @@ export const SessionRoutes = lazy(() =>
       describeRoute({
         summary: "Add transcript",
         description: "Add a user or assistant transcript to a session.",
-        operationId: "session.transcript.add",  // This becomes the SDK method name
+        operationId: "session.transcript.add", // This becomes the SDK method name
         responses: {
           200: {
             description: "Transcript added",
@@ -54,14 +55,20 @@ export const SessionRoutes = lazy(() =>
           ...errors(400, 404),
         },
       }),
-      validator("param", z.object({
-        sessionID: z.string(),
-      })),
-      validator("json", z.object({
-        role: z.enum(["user", "assistant"]),
-        text: z.string(),
-        metadata: z.record(z.string(), z.any()).optional(),
-      })),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string(),
+        }),
+      ),
+      validator(
+        "json",
+        z.object({
+          role: z.enum(["user", "assistant"]),
+          text: z.string(),
+          metadata: z.record(z.string(), z.any()).optional(),
+        }),
+      ),
       async (c) => {
         const { sessionID } = c.req.valid("param")
         const { role, text, metadata } = c.req.valid("json")
@@ -70,11 +77,12 @@ export const SessionRoutes = lazy(() =>
 
         return c.json({ messageID, partID })
       },
-    )
+    ),
 )
 ```
 
 **Key elements:**
+
 - `operationId`: Becomes the SDK method name (e.g., `session.transcript.add` → `sdk.client.session.transcriptAdd()`)
 - `describeRoute()`: OpenAPI documentation
 - `validator()`: Request validation with Zod schemas
@@ -121,6 +129,7 @@ describe("session.transcript", () => {
 ```
 
 Run tests:
+
 ```bash
 cd packages/opencode
 bun test test/server/session-transcript.test.ts
@@ -136,11 +145,13 @@ bun run build
 ```
 
 This will:
+
 1. Run `bun dev generate` to extract OpenAPI spec from the server
 2. Generate TypeScript types and client methods
 3. Build the SDK package
 
 **Verify the new types exist:**
+
 ```bash
 grep -r "transcriptAdd" packages/sdk/js/src/v2/gen/
 ```
@@ -175,23 +186,29 @@ function MyComponent() {
 ## Why This Pattern?
 
 ### Type Safety
+
 Generated types ensure request and response shapes are correct at compile time.
 
 ### Automatic Headers
+
 The SDK client automatically includes:
+
 - `x-opencode-directory` header for project context
 - Proper Content-Type headers
 - Custom timeout handling
 
 ### Consistency
+
 All API calls follow the same pattern, making the codebase easier to maintain.
 
 ### Error Handling
+
 Generated client provides consistent error handling across all endpoints.
 
 ## Common Mistakes
 
 ### Using Raw Fetch
+
 ```typescript
 // WRONG - Missing headers, no type safety
 await fetch(`${url}/session/${id}/transcript`, {
@@ -208,21 +225,24 @@ await sdk.client.session.transcriptAdd({
 ```
 
 ### Forgetting to Regenerate SDK
+
 If you add a server route but don't regenerate the SDK, the client method won't exist. Always run:
+
 ```bash
 cd packages/sdk/js && bun run build
 ```
 
 ### Missing OpenAPI Annotations
+
 Routes without `describeRoute()` won't be included in the generated SDK.
 
 ## File Reference
 
-| File | Purpose |
-|------|---------|
+| File                                       | Purpose                  |
+| ------------------------------------------ | ------------------------ |
 | `packages/opencode/src/server/routes/*.ts` | Server route definitions |
-| `packages/opencode/src/server/server.ts` | Route registration |
-| `packages/sdk/js/script/build.ts` | SDK generation script |
-| `packages/sdk/js/src/v2/gen/*.ts` | Generated SDK files |
-| `packages/sdk/js/src/v2/client.ts` | Client factory function |
-| `packages/app/src/context/sdk.tsx` | App SDK context |
+| `packages/opencode/src/server/server.ts`   | Route registration       |
+| `packages/sdk/js/script/build.ts`          | SDK generation script    |
+| `packages/sdk/js/src/v2/gen/*.ts`          | Generated SDK files      |
+| `packages/sdk/js/src/v2/client.ts`         | Client factory function  |
+| `packages/app/src/context/sdk.tsx`         | App SDK context          |

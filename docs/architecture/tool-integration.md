@@ -8,17 +8,18 @@ This guide analyzes how to execute OpenCode tools from external agents and wheth
 
 **Answer**: **Partially**. OpenCode provides excellent tool implementations with robust error handling, but the current `/tool/call` endpoint has limitations for production external agent use:
 
-| Aspect | Status | Notes |
-|--------|--------|-------|
+| Aspect               | Status       | Notes                               |
+| -------------------- | ------------ | ----------------------------------- |
 | Tool implementations | ✅ Excellent | Well-tested, safe, feature-complete |
-| Input validation | ✅ Excellent | Zod schemas with helpful errors |
-| Output truncation | ✅ Excellent | Prevents token explosion |
-| Error handling | ✅ Excellent | Structured errors, recovery hints |
-| Permission system | ⚠️ Bypassed | `/tool/call` has no-op `ctx.ask` |
-| Session dependency | ⚠️ Required | Must create session first |
-| Stateless execution | ❌ Missing | No direct tool execution endpoint |
+| Input validation     | ✅ Excellent | Zod schemas with helpful errors     |
+| Output truncation    | ✅ Excellent | Prevents token explosion            |
+| Error handling       | ✅ Excellent | Structured errors, recovery hints   |
+| Permission system    | ⚠️ Bypassed  | `/tool/call` has no-op `ctx.ask`    |
+| Session dependency   | ⚠️ Required  | Must create session first           |
+| Stateless execution  | ❌ Missing   | No direct tool execution endpoint   |
 
 **Recommendation**: For production external agent use, consider one of these approaches:
+
 1. **Use OpenCode as-is** with session management (current state)
 2. **Extend OpenCode** with a stateless `/tool/execute` endpoint
 3. **Build a specialized MCP server** that wraps OpenCode tool implementations
@@ -32,12 +33,14 @@ This guide analyzes how to execute OpenCode tools from external agents and wheth
 The existing endpoint designed for client-side inference.
 
 **Pros:**
+
 - Already implemented
 - Full tool access
 - Stores execution history in ToolParts
 - Integrates with session context
 
 **Cons:**
+
 - Requires session creation first
 - Permission system is bypassed (no user approval flow)
 - Tied to OpenCode's session model
@@ -47,30 +50,30 @@ The existing endpoint designed for client-side inference.
 
 ```typescript
 // 1. Create a session
-const sessionRes = await fetch('http://localhost:8787/session', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+const sessionRes = await fetch("http://localhost:8787/session", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    title: 'External Agent Session',
-    providerID: 'external',
-    modelID: 'external-agent',
-  })
-});
-const session = await sessionRes.json();
+    title: "External Agent Session",
+    providerID: "external",
+    modelID: "external-agent",
+  }),
+})
+const session = await sessionRes.json()
 
 // 2. Execute a tool
 const toolRes = await fetch(`http://localhost:8787/session/${session.id}/tool/call`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    toolName: 'read',
-    callId: 'call-123',
+    toolName: "read",
+    callId: "call-123",
     arguments: {
-      filePath: '/path/to/file.ts'
-    }
-  })
-});
-const result = await toolRes.json();
+      filePath: "/path/to/file.ts",
+    },
+  }),
+})
+const result = await toolRes.json()
 // { callId: 'call-123', result: '...file contents...', error?: string }
 ```
 
@@ -79,27 +82,27 @@ const result = await toolRes.json();
 For agents running in the same process as OpenCode.
 
 ```typescript
-import { ToolRegistry } from '@opencode/tool/registry'
-import { Tool } from '@opencode/tool/tool'
+import { ToolRegistry } from "@opencode/tool/registry"
+import { Tool } from "@opencode/tool/tool"
 
 // Get all available tools
 const tools = await ToolRegistry.tools(
-  { providerID: 'openai', modelID: 'gpt-4' },
-  agent  // optional agent context
+  { providerID: "openai", modelID: "gpt-4" },
+  agent, // optional agent context
 )
 
 // Execute a specific tool
-const readTool = tools.find(t => t.id === 'read')
+const readTool = tools.find((t) => t.id === "read")
 const result = await readTool.execute(
-  { filePath: '/path/to/file.ts' },
+  { filePath: "/path/to/file.ts" },
   {
-    sessionID: 'session-123',
-    messageID: 'msg-123',
-    agent: 'external',
+    sessionID: "session-123",
+    messageID: "msg-123",
+    agent: "external",
     abort: new AbortController().signal,
     metadata: () => {},
     ask: async () => {}, // No-op or implement permission handling
-  }
+  },
 )
 ```
 
@@ -133,12 +136,14 @@ External Agent
 ```
 
 **Pros:**
+
 - Standard protocol (MCP) for tool discovery and execution
 - Full control over permission enforcement
 - Can add custom safeguards
 - Works with any MCP-compatible agent
 
 **Cons:**
+
 - Requires building and maintaining wrapper
 - Duplicates some OpenCode infrastructure
 
@@ -151,6 +156,7 @@ For better external agent support, OpenCode could expose a stateless endpoint:
 ### `POST /tool/execute`
 
 **Request:**
+
 ```typescript
 {
   tool: string                    // Tool ID
@@ -164,6 +170,7 @@ For better external agent support, OpenCode could expose a stateless endpoint:
 ```
 
 **Response:**
+
 ```typescript
 {
   success: boolean
@@ -186,6 +193,7 @@ For better external agent support, OpenCode could expose a stateless endpoint:
 List available tools with their schemas.
 
 **Response:**
+
 ```typescript
 {
   tools: Array<{
@@ -200,16 +208,16 @@ List available tools with their schemas.
 
 ## Comparison: OpenCode Server vs Custom MCP Server
 
-| Factor | OpenCode Server | Custom MCP Server |
-|--------|-----------------|-------------------|
-| **Setup complexity** | Low (already exists) | Medium (build from scratch) |
-| **Tool implementations** | ✅ All included | Must import or reimplement |
-| **Protocol** | REST API | MCP (standard) |
-| **Permission control** | Limited | Full control |
-| **Session management** | Required | Optional |
-| **Agent compatibility** | Custom integration | Any MCP client |
-| **Maintenance** | Minimal | Your responsibility |
-| **Customization** | Fork required | Full flexibility |
+| Factor                   | OpenCode Server      | Custom MCP Server           |
+| ------------------------ | -------------------- | --------------------------- |
+| **Setup complexity**     | Low (already exists) | Medium (build from scratch) |
+| **Tool implementations** | ✅ All included      | Must import or reimplement  |
+| **Protocol**             | REST API             | MCP (standard)              |
+| **Permission control**   | Limited              | Full control                |
+| **Session management**   | Required             | Optional                    |
+| **Agent compatibility**  | Custom integration   | Any MCP client              |
+| **Maintenance**          | Minimal              | Your responsibility         |
+| **Customization**        | Fork required        | Full flexibility            |
 
 ### When to Use OpenCode Server
 
@@ -253,35 +261,38 @@ List available tools with their schemas.
 
 ```typescript
 // mcp-opencode-tools/index.ts
-import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { ToolRegistry } from '@opencode/tool/registry'
-import { Tool } from '@opencode/tool/tool'
+import { Server } from "@modelcontextprotocol/sdk/server/index.js"
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
+import { ToolRegistry } from "@opencode/tool/registry"
+import { Tool } from "@opencode/tool/tool"
 
-const server = new Server({
-  name: 'opencode-tools',
-  version: '1.0.0',
-}, {
-  capabilities: { tools: {} }
-})
+const server = new Server(
+  {
+    name: "opencode-tools",
+    version: "1.0.0",
+  },
+  {
+    capabilities: { tools: {} },
+  },
+)
 
 // List tools
-server.setRequestHandler('tools/list', async () => {
-  const tools = await ToolRegistry.tools({ providerID: 'openai', modelID: 'gpt-4' })
+server.setRequestHandler("tools/list", async () => {
+  const tools = await ToolRegistry.tools({ providerID: "openai", modelID: "gpt-4" })
   return {
-    tools: tools.map(t => ({
+    tools: tools.map((t) => ({
       name: t.id,
       description: t.description,
-      inputSchema: zodToJsonSchema(t.parameters)
-    }))
+      inputSchema: zodToJsonSchema(t.parameters),
+    })),
   }
 })
 
 // Execute tool
-server.setRequestHandler('tools/call', async (request) => {
+server.setRequestHandler("tools/call", async (request) => {
   const { name, arguments: args } = request.params
-  const tools = await ToolRegistry.tools({ providerID: 'openai', modelID: 'gpt-4' })
-  const tool = tools.find(t => t.id === name)
+  const tools = await ToolRegistry.tools({ providerID: "openai", modelID: "gpt-4" })
+  const tool = tools.find((t) => t.id === name)
 
   if (!tool) {
     throw new Error(`Tool not found: ${name}`)
@@ -289,20 +300,20 @@ server.setRequestHandler('tools/call', async (request) => {
 
   // Create minimal context
   const ctx: Tool.Context = {
-    sessionID: 'mcp-session',
-    messageID: 'mcp-call',
-    agent: 'mcp',
+    sessionID: "mcp-session",
+    messageID: "mcp-call",
+    agent: "mcp",
     abort: new AbortController().signal,
     metadata: () => {},
     ask: async (req) => {
       // Implement your permission logic here
       // Could check against config, rate limits, etc.
-    }
+    },
   }
 
   const result = await tool.execute(args, ctx)
   return {
-    content: [{ type: 'text', text: result.output }]
+    content: [{ type: "text", text: result.output }],
   }
 })
 
@@ -318,6 +329,7 @@ await server.connect(transport)
 ### For Prototyping / Internal Use
 
 Use the existing `/session/:id/tool/call` endpoint:
+
 1. Create a dedicated session for your external agent
 2. Use the session ID for all tool calls
 3. Accept that permissions are bypassed
@@ -325,6 +337,7 @@ Use the existing `/session/:id/tool/call` endpoint:
 ### For Production External Agents
 
 Build a custom MCP server wrapper that:
+
 1. Imports OpenCode tool implementations directly
 2. Implements proper permission enforcement
 3. Adds audit logging and rate limiting
@@ -333,6 +346,7 @@ Build a custom MCP server wrapper that:
 ### For Contributing to OpenCode
 
 Consider adding:
+
 1. A stateless `/tool/execute` endpoint
 2. Tool introspection via `/tool` listing endpoint
 3. Configurable permission modes (bypass, strict, custom)

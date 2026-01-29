@@ -7,6 +7,7 @@ This document summarizes the OpenAI Realtime API as used in opencode.
 **Endpoint**: `wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview`
 
 **With SDK**:
+
 ```typescript
 import { OpenAIRealtimeWebSocket } from "@openai/agents-realtime"
 
@@ -24,9 +25,9 @@ await transport.connect({
 ## Audio Format
 
 | Direction | Format | Sample Rate | Channels | Encoding |
-|-----------|--------|-------------|----------|----------|
-| Input | PCM16 | 24kHz | Mono | base64 |
-| Output | PCM16 | 24kHz | Mono | base64 |
+| --------- | ------ | ----------- | -------- | -------- |
+| Input     | PCM16  | 24kHz       | Mono     | base64   |
+| Output    | PCM16  | 24kHz       | Mono     | base64   |
 
 Also supported: G.711 (µ-law and A-law) for telephony.
 
@@ -59,30 +60,33 @@ Sent via `session.update` after connection:
 
 ### Voice Options
 
-| Voice | Description |
-|-------|-------------|
-| `alloy` | Neutral, balanced |
-| `echo` | Warm, conversational |
-| `shimmer` | Clear, expressive |
-| `ash` | Soft, calm |
-| `ballad` | Gentle, melodic |
-| `coral` | Bright, friendly |
-| `sage` | Wise, measured |
-| `verse` | Dynamic, engaging |
+| Voice     | Description          |
+| --------- | -------------------- |
+| `alloy`   | Neutral, balanced    |
+| `echo`    | Warm, conversational |
+| `shimmer` | Clear, expressive    |
+| `ash`     | Soft, calm           |
+| `ballad`  | Gentle, melodic      |
+| `coral`   | Bright, friendly     |
+| `sage`    | Wise, measured       |
+| `verse`   | Dynamic, engaging    |
 
 ### Turn Detection
 
 **Semantic VAD** (recommended):
+
 ```json
 {
   "type": "semantic_vad",
   "eagerness": "medium"
 }
 ```
+
 - Uses classifier to detect natural utterance boundaries
 - `eagerness`: "low", "medium", "high" - how quickly to respond
 
 **Server VAD** (threshold-based):
+
 ```json
 {
   "type": "server_vad",
@@ -95,6 +99,7 @@ Sent via `session.update` after connection:
 ```
 
 **Manual** (push-to-talk):
+
 ```json
 {
   "type": "none"
@@ -187,7 +192,7 @@ transport.sendMessage("Hello!")
 ```typescript
 transport.updateSessionConfig({
   voice: "echo",
-  temperature: 0.6
+  temperature: 0.6,
 })
 ```
 
@@ -224,6 +229,7 @@ If using raw WebSocket (not recommended), these are the event shapes:
 ```
 
 Then trigger continuation:
+
 ```json
 {
   "type": "response.create"
@@ -284,24 +290,24 @@ Then trigger continuation:
 
 ## Pricing (2025)
 
-| Type | Cost |
-|------|------|
-| Audio input | $0.06 / minute (~100 tokens/second) |
+| Type         | Cost                                |
+| ------------ | ----------------------------------- |
+| Audio input  | $0.06 / minute (~100 tokens/second) |
 | Audio output | $0.24 / minute (~200 tokens/second) |
-| Text input | Standard GPT-4o pricing |
-| Text output | Standard GPT-4o pricing |
+| Text input   | Standard GPT-4o pricing             |
+| Text output  | Standard GPT-4o pricing             |
 
 A 1-minute conversation costs ~$0.30.
 
 ## Error Handling
 
-| Code | Meaning | Action |
-|------|---------|--------|
-| `invalid_api_key` | Bad API key | Check credentials |
-| `token_expired` | Ephemeral key expired | Refresh token |
-| `rate_limit_exceeded` | Too many requests | Backoff and retry |
-| `invalid_audio_format` | Wrong encoding | Check PCM16 format |
-| `connection_closed` | WebSocket dropped | Reconnect |
+| Code                   | Meaning               | Action             |
+| ---------------------- | --------------------- | ------------------ |
+| `invalid_api_key`      | Bad API key           | Check credentials  |
+| `token_expired`        | Ephemeral key expired | Refresh token      |
+| `rate_limit_exceeded`  | Too many requests     | Backoff and retry  |
+| `invalid_audio_format` | Wrong encoding        | Check PCM16 format |
+| `connection_closed`    | WebSocket dropped     | Reconnect          |
 
 ## References
 

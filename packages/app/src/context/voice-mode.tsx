@@ -47,12 +47,7 @@ export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleCo
     }
 
     // Store transcript on the server (for voice input from microphone)
-    const storeTranscript = async (
-      role: "user" | "assistant",
-      text: string,
-      messageID?: string,
-      partID?: string,
-    ) => {
+    const storeTranscript = async (role: "user" | "assistant", text: string, messageID?: string, partID?: string) => {
       const sid = sessionID()
       if (!sid || !text.trim()) return
 

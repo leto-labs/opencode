@@ -6,9 +6,9 @@ This document describes how tool calling works in OpenCode for both server-side 
 
 Tools enable LLMs to interact with the local environment (file system, shell, LSP, etc.). The key difference between inference modes is **who decides** to call a tool vs **who executes** it:
 
-| Mode | Tool Decision | Tool Execution | Result Handling |
-|------|---------------|----------------|-----------------|
-| **Server-side** | Server (in agent loop) | Server | Server continues loop |
+| Mode            | Tool Decision          | Tool Execution   | Result Handling            |
+| --------------- | ---------------------- | ---------------- | -------------------------- |
+| **Server-side** | Server (in agent loop) | Server           | Server continues loop      |
 | **Client-side** | Client (from provider) | Server (relayed) | Client returns to provider |
 
 ---
@@ -19,35 +19,36 @@ OpenCode provides **18+ built-in tools** registered in `packages/opencode/src/to
 
 ### Core Tools
 
-| Tool | Description | Key Parameters |
-|------|-------------|----------------|
-| `read` | Read file contents | `filePath`, `offset?`, `limit?` |
-| `write` | Create/overwrite files | `filePath`, `content` |
-| `edit` | Edit file (search/replace) | `filePath`, `old_string`, `new_string` |
-| `bash` | Execute shell commands | `command`, `timeout?` |
-| `glob` | Find files by pattern | `pattern`, `path?` |
-| `grep` | Search file contents | `pattern`, `path?`, `include?` |
-| `webfetch` | Fetch web content | `url`, `prompt?` |
-| `websearch` | Web search (OpenCode/EXA) | `query` |
-| `codesearch` | Code search | `query` |
-| `apply_patch` | Apply unified diffs | `patch` (used for GPT models) |
+| Tool          | Description                | Key Parameters                         |
+| ------------- | -------------------------- | -------------------------------------- |
+| `read`        | Read file contents         | `filePath`, `offset?`, `limit?`        |
+| `write`       | Create/overwrite files     | `filePath`, `content`                  |
+| `edit`        | Edit file (search/replace) | `filePath`, `old_string`, `new_string` |
+| `bash`        | Execute shell commands     | `command`, `timeout?`                  |
+| `glob`        | Find files by pattern      | `pattern`, `path?`                     |
+| `grep`        | Search file contents       | `pattern`, `path?`, `include?`         |
+| `webfetch`    | Fetch web content          | `url`, `prompt?`                       |
+| `websearch`   | Web search (OpenCode/EXA)  | `query`                                |
+| `codesearch`  | Code search                | `query`                                |
+| `apply_patch` | Apply unified diffs        | `patch` (used for GPT models)          |
 
 ### Extended Tools
 
-| Tool | Description | Availability |
-|------|-------------|--------------|
-| `question` | Interactive user questions | CLI/app/desktop only |
-| `task` | Create/manage subtasks | Always |
-| `todoread` | Read todo list | Always |
-| `todowrite` | Write todo list | Always |
-| `skill` | Load skill workflows | Always |
-| `batch` | Execute multiple operations | Experimental (config flag) |
-| `lsp` | Language server interactions | Experimental (flag) |
-| `plan_enter`/`plan_exit` | Plan mode tools | Experimental (CLI only) |
+| Tool                     | Description                  | Availability               |
+| ------------------------ | ---------------------------- | -------------------------- |
+| `question`               | Interactive user questions   | CLI/app/desktop only       |
+| `task`                   | Create/manage subtasks       | Always                     |
+| `todoread`               | Read todo list               | Always                     |
+| `todowrite`              | Write todo list              | Always                     |
+| `skill`                  | Load skill workflows         | Always                     |
+| `batch`                  | Execute multiple operations  | Experimental (config flag) |
+| `lsp`                    | Language server interactions | Experimental (flag)        |
+| `plan_enter`/`plan_exit` | Plan mode tools              | Experimental (CLI only)    |
 
 ### MCP Tools
 
 MCP (Model Context Protocol) tools are loaded from configured MCP servers and prefixed with the server name:
+
 - Format: `{serverName}_{toolName}` (e.g., `github_search_code`)
 - Configured in `.opencode/config.json` or global config
 
@@ -138,6 +139,7 @@ In server-side inference, the agent loop handles everything:
 ### Key Code Paths
 
 **1. Tool Registration (`session/prompt.ts:495-520`)**
+
 ```typescript
 const tools = Object.fromEntries(
   resolved.tools
@@ -147,6 +149,7 @@ const tools = Object.fromEntries(
 ```
 
 **2. LLM Call with Tools (`session/prompt.ts:547-600`)**
+
 ```typescript
 const stream = streamText({
   model: ...,
@@ -157,6 +160,7 @@ const stream = streamText({
 ```
 
 **3. Tool Execution (`session/prompt.ts:650-750`)**
+
 ```typescript
 for await (const item of stream.fullStream) {
   if (item.type === "tool-call") {
@@ -168,6 +172,7 @@ for await (const item of stream.fullStream) {
 ```
 
 **4. Loop Continuation (`session/prompt.ts:258-290`)**
+
 ```typescript
 // Exit if assistant finished (not tool-calls)
 if (lastAssistant?.finish && !["tool-calls", "unknown"].includes(lastAssistant.finish)) {
@@ -207,6 +212,7 @@ Client (Browser)                    Server                         OpenAI Realti
 ### Endpoint: `POST /session/:id/tool/call`
 
 **Request Schema:**
+
 ```typescript
 {
   toolName: string      // Tool ID (e.g., "read", "bash", "write")
@@ -220,6 +226,7 @@ Client (Browser)                    Server                         OpenAI Realti
 ```
 
 **Response Schema:**
+
 ```typescript
 {
   callId: string        // Echo back for correlation
@@ -252,15 +259,15 @@ interface ToolPart {
   messageID: string
   sessionID: string
   type: "tool"
-  tool: string           // Tool name
-  callID: string         // Provider's call ID
+  tool: string // Tool name
+  callID: string // Provider's call ID
   state: {
     status: "pending" | "running" | "completed" | "error"
-    input: any           // Arguments
-    output?: string      // Result
-    error?: string       // If failed
-    title?: string       // Human-readable summary
-    metadata?: any       // Tool-specific data
+    input: any // Arguments
+    output?: string // Result
+    error?: string // If failed
+    title?: string // Human-readable summary
+    metadata?: any // Tool-specific data
     time?: {
       start: number
       end?: number
@@ -296,24 +303,25 @@ Tools require permissions before execution. The permission system is defined in 
 ```typescript
 // Inside tool execution
 await ctx.ask({
-  permission: "read",     // Permission type
-  patterns: [filepath],   // What's being accessed
-  always: ["*"],          // Auto-allow patterns
-  metadata: {}            // Context info
+  permission: "read", // Permission type
+  patterns: [filepath], // What's being accessed
+  always: ["*"], // Auto-allow patterns
+  metadata: {}, // Context info
 })
 ```
 
 If permission is not granted:
+
 - **Server-side**: Pauses loop, publishes `permission.asked` event, waits for user approval
 - **Client-side**: Currently bypassed (ctx.ask is no-op in /tool/call endpoint)
 
 ### Permission Actions
 
-| Action | Behavior |
-|--------|----------|
-| `allow` | Proceed immediately |
-| `deny` | Throw `DeniedError`, halt execution |
-| `ask` | Wait for user approval |
+| Action  | Behavior                            |
+| ------- | ----------------------------------- |
+| `allow` | Proceed immediately                 |
+| `deny`  | Throw `DeniedError`, halt execution |
+| `ask`   | Wait for user approval              |
 
 ### Permission Rules in Config
 
@@ -346,9 +354,7 @@ toolInfo.execute = async (args, ctx) => {
     if (error instanceof z.ZodError && toolInfo.formatValidationError) {
       throw new Error(toolInfo.formatValidationError(error), { cause: error })
     }
-    throw new Error(
-      `The ${id} tool was called with invalid arguments: ${error}.`
-    )
+    throw new Error(`The ${id} tool was called with invalid arguments: ${error}.`)
   }
   // ... execute
 }
@@ -380,6 +386,7 @@ if (doomLoopCount >= 3) {
 ### External Directory Protection
 
 `assertExternalDirectory()` checks file access:
+
 - Resolves symlinks and relative paths
 - Requires permission for paths outside workspace
 - Prevents accidental access to system files
@@ -388,27 +395,27 @@ if (doomLoopCount >= 3) {
 
 ## Comparison
 
-| Aspect | Server-Side | Client-Side |
-|--------|-------------|-------------|
-| Tool decision | LLM via server | LLM via client |
-| Tool execution | Immediate in loop | Relayed via `/tool/call` |
+| Aspect          | Server-Side                         | Client-Side                          |
+| --------------- | ----------------------------------- | ------------------------------------ |
+| Tool decision   | LLM via server                      | LLM via client                       |
+| Tool execution  | Immediate in loop                   | Relayed via `/tool/call`             |
 | Result handling | Appended to context, loop continues | Returned to client, sent to provider |
-| Permission UX | Server pauses, sends SSE | Currently bypassed |
-| Storage | ToolPart in assistant message | ToolPart created per call |
+| Permission UX   | Server pauses, sends SSE            | Currently bypassed                   |
+| Storage         | ToolPart in assistant message       | ToolPart created per call            |
 
 ---
 
 ## Related Files
 
-| File | Purpose |
-|------|---------|
+| File                       | Purpose                                |
+| -------------------------- | -------------------------------------- |
 | `server/routes/session.ts` | `/tool/call` endpoint (lines 989-1137) |
-| `session/prompt.ts` | Server-side tool execution in loop |
-| `tool/tool.ts` | Tool interface definition |
-| `tool/registry.ts` | Tool registration and discovery |
-| `tool/*.ts` | Individual tool implementations |
-| `permission/next.ts` | Permission system |
-| `mcp/index.ts` | MCP tool integration |
+| `session/prompt.ts`        | Server-side tool execution in loop     |
+| `tool/tool.ts`             | Tool interface definition              |
+| `tool/registry.ts`         | Tool registration and discovery        |
+| `tool/*.ts`                | Individual tool implementations        |
+| `permission/next.ts`       | Permission system                      |
+| `mcp/index.ts`             | MCP tool integration                   |
 
 ---
 

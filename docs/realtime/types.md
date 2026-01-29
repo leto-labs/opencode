@@ -15,7 +15,7 @@ interface TextPart {
   messageID: string
   type: "text"
   text: string
-  synthetic?: boolean  // true for transcribed audio
+  synthetic?: boolean // true for transcribed audio
   time?: {
     start: number
     end?: number
@@ -52,12 +52,7 @@ interface RealtimeEventPart {
 ### ToolState Extension
 
 ```typescript
-type ToolStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "error"
-  | "interrupted"  // New for realtime
+type ToolStatus = "pending" | "running" | "completed" | "error" | "interrupted" // New for realtime
 
 interface ToolStateInterrupted {
   status: "interrupted"
@@ -95,7 +90,7 @@ interface TranscriptInput {
 interface ToolCallInput {
   call_id: string
   name: string
-  arguments: string  // JSON string
+  arguments: string // JSON string
 }
 
 interface ToolCallOutput {
@@ -115,7 +110,7 @@ interface EphemeralTokenInput {
 }
 
 interface EphemeralTokenOutput {
-  token: string      // ek_...
+  token: string // ek_...
   expires_at: number // Unix timestamp
   model: string
 }
@@ -130,11 +125,14 @@ interface ToolDefinition {
   description: string
   parameters: {
     type: "object"
-    properties: Record<string, {
-      type: string
-      description?: string
-      enum?: string[]
-    }>
+    properties: Record<
+      string,
+      {
+        type: string
+        description?: string
+        enum?: string[]
+      }
+    >
     required?: string[]
   }
 }
@@ -230,10 +228,7 @@ interface RealtimeSessionConfig {
   }
 }
 
-type AudioFormat =
-  | { type: "audio/pcm"; rate: number }
-  | { type: "audio/pcmu" }
-  | { type: "audio/pcma" }
+type AudioFormat = { type: "audio/pcm"; rate: number } | { type: "audio/pcmu" } | { type: "audio/pcma" }
 
 interface TurnDetectionConfig {
   type: "semantic_vad" | "server_vad" | "none"
@@ -267,8 +262,8 @@ type AssistantTranscriptEvent = z.infer<typeof responseAudioTranscriptDoneEventS
 
 ```typescript
 interface PCM16Options {
-  sampleRate: number  // 24000
-  channels: number    // 1 (mono)
+  sampleRate: number // 24000
+  channels: number // 1 (mono)
 }
 
 // Conversion functions

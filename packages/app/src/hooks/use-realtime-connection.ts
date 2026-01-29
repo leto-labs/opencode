@@ -36,10 +36,7 @@ export interface RealtimeConnectionConfig {
  * - Transcript storage (caller's responsibility)
  * - UI updates (caller's responsibility)
  */
-export function useRealtimeConnection(
-  sessionID: Accessor<string | undefined>,
-  config: RealtimeConnectionConfig,
-) {
+export function useRealtimeConnection(sessionID: Accessor<string | undefined>, config: RealtimeConnectionConfig) {
   const [status, setStatus] = createSignal<RealtimeStatus>("disconnected")
   const [error, setError] = createSignal<string | null>(null)
   const sdk = useSDK()

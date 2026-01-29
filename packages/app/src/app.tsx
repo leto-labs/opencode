@@ -161,7 +161,7 @@ export function AppInterface(props: { defaultUrl?: string }) {
                   )}
                 />
               </Route>
-              </Router>
+            </Router>
           </GlobalSyncProvider>
         </GlobalSDKProvider>
       </ServerKey>
