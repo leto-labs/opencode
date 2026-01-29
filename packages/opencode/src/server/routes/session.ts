@@ -1181,7 +1181,9 @@ export const SessionRoutes = lazy(() =>
       validator(
         "query",
         z.object({
-          modelID: z.string().meta({ description: "Model ID for model-specific prompts (e.g., gpt-realtime, claude-3-5-sonnet)" }),
+          modelID: z
+            .string()
+            .meta({ description: "Model ID for model-specific prompts (e.g., gpt-realtime, claude-3-5-sonnet)" }),
           providerID: z.string().meta({ description: "Provider ID (e.g., openai, anthropic)" }),
         }),
       ),
