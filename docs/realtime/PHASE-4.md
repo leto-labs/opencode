@@ -67,22 +67,24 @@ Adopt a pattern similar to the `chatSupervisor` example from OpenAI's realtime-a
 
 ### Why This Works
 
-| Aspect | Direct Tools (Current) | Subagent Architecture |
-|--------|------------------------|----------------------|
-| **Token usage per request** | High (full outputs in context) | Low (only summary returned) |
-| **File read output** | Full file content (~10k tokens) | Summary from subagent (~100 tokens) |
-| **Cost** | High (realtime pricing) | Lower (subagent uses cheaper model) |
-| **Latency** | Fast for small ops | Slightly slower, but sustainable |
-| **Scalability** | Hits TPM limits quickly | Scales with subagent model limits |
+| Aspect                      | Direct Tools (Current)          | Subagent Architecture               |
+| --------------------------- | ------------------------------- | ----------------------------------- |
+| **Token usage per request** | High (full outputs in context)  | Low (only summary returned)         |
+| **File read output**        | Full file content (~10k tokens) | Summary from subagent (~100 tokens) |
+| **Cost**                    | High (realtime pricing)         | Lower (subagent uses cheaper model) |
+| **Latency**                 | Fast for small ops              | Slightly slower, but sustainable    |
+| **Scalability**             | Hits TPM limits quickly         | Scales with subagent model limits   |
 
 ### Tool Distribution
 
 **Realtime Agent Tools** (low token impact):
+
 - `glob` - Returns file paths only (small output)
 - `grep` - Returns matching lines only (bounded output)
 - `subagent` - Delegates to text model, returns summary
 
 **Subagent Tools** (high token impact, handled by text model):
+
 - `read` - File contents can be large
 - `write` - Confirmation message only
 - `edit` - Diff output can be large
@@ -97,12 +99,14 @@ OpenCode already has a `task` tool that spawns sub-agents. The issue is that voi
 
 **Root Cause Analysis**:
 The task tool (lines 102-105 in `tool/task.ts`) inherits the parent's model:
+
 ```typescript
 const model = agent.model ?? {
   modelID: msg.info.modelID,
   providerID: msg.info.providerID,
 }
 ```
+
 In voice mode, the parent message has `modelID: "client"`, so subagents fail.
 
 **Solution: Simplified Dual Model Architecture (Frontend-Only)**
@@ -150,6 +154,7 @@ The backend doesn't need to know about realtime models. Voice mode is a frontend
 ### User Stories to Test
 
 **Story A: Text-first workflow**
+
 1. User sends text message → regular model responds
 2. User starts voice call
 3. User sends message (text or voice) → realtime model responds
@@ -158,6 +163,7 @@ The backend doesn't need to know about realtime models. Voice mode is a frontend
 6. ✓ All messages visible in same conversation, no data loss
 
 **Story B: Voice-first workflow**
+
 1. User starts voice call
 2. User sends message via realtime → realtime model responds
 3. User ends call
@@ -193,6 +199,7 @@ The backend doesn't need to know about realtime models. Voice mode is a frontend
 - Voice mode is an "enhancement", not a separate mode
 
 Reference implementation: `/tmp/openai-realtime-agents/src/app/agentConfigs/chatSupervisor/`
+
 - `supervisorAgent.ts` shows how to call a text model from a realtime tool
 - Uses `fetch('/api/responses')` to call a text model and return results
 
@@ -233,12 +240,13 @@ SessionTool.call({
   sessionID,
   toolName: "read",
   callId: "call_123",
-  arguments: { filePath: "/path/to/file" }
+  arguments: { filePath: "/path/to/file" },
 })
 // Returns: { callId, result, error? }
 ```
 
 **What it does:**
+
 1. Validates session exists
 2. Looks up tool from `ToolRegistry.tools()`
 3. Creates assistant message to hold the tool call
@@ -249,6 +257,7 @@ SessionTool.call({
 8. Returns result to caller
 
 **Key difference from traditional flow:**
+
 - Tool is executed on-demand (client sends request) vs in a loop (server decides)
 - Message/part storage is handled here vs in the agent loop
 - No permission UI yet (ctx.ask is a no-op)
@@ -257,15 +266,15 @@ SessionTool.call({
 
 ## Comparison: Server-Side vs Client-Side Tool Flow
 
-| Aspect | Server-Side (Traditional) | Client-Side (Realtime) |
-|--------|---------------------------|------------------------|
-| **Who decides** | Server (LLM in agent loop) | Client (from OpenAI) |
-| **Who executes** | Server (immediate) | Server (via `/tool/call`) |
-| **Result handling** | Append to context, continue loop | Return to client, relay to OpenAI |
-| **Message creation** | In agent loop | In `SessionTool.call()` |
-| **Permission UX** | SSE events, UI prompts | Not implemented yet |
-| **System prompt** | Built from config + instructions | Hardcoded in client |
-| **Tool registration** | Passed to `streamText()` | Passed to `RealtimeSession` config |
+| Aspect                | Server-Side (Traditional)        | Client-Side (Realtime)             |
+| --------------------- | -------------------------------- | ---------------------------------- |
+| **Who decides**       | Server (LLM in agent loop)       | Client (from OpenAI)               |
+| **Who executes**      | Server (immediate)               | Server (via `/tool/call`)          |
+| **Result handling**   | Append to context, continue loop | Return to client, relay to OpenAI  |
+| **Message creation**  | In agent loop                    | In `SessionTool.call()`            |
+| **Permission UX**     | SSE events, UI prompts           | Not implemented yet                |
+| **System prompt**     | Built from config + instructions | Hardcoded in client                |
+| **Tool registration** | Passed to `streamText()`         | Passed to `RealtimeSession` config |
 
 ### Traditional Agent Loop (session/prompt.ts)
 
@@ -338,6 +347,7 @@ Need `GET /session/:id/tools` to return tools in OpenAI function format:
 ```
 
 **Challenge**: Our tools use Zod schemas. Need to convert to JSON Schema:
+
 - Use `zod-to-json-schema` or similar
 - Strip internal metadata
 - Handle complex types (discriminated unions, etc.)
@@ -345,24 +355,27 @@ Need `GET /session/:id/tools` to return tools in OpenAI function format:
 ### 2. System Prompt for Voice Agent
 
 Currently the RealtimeAgent uses:
+
 ```typescript
 const agent = new RealtimeAgent({
-  instructions: "You are a helpful assistant. Keep responses concise."
+  instructions: "You are a helpful assistant. Keep responses concise.",
 })
 ```
 
 Should use OpenCode's prompt infrastructure:
+
 ```typescript
 // What server builds for traditional agents
 const systemPrompt = [
-  ...SystemPrompt.provider(model),     // Model-specific prompt
-  ...await SystemPrompt.environment(model), // Environment info
-  ...await InstructionPrompt.system(), // AGENTS.md, CLAUDE.md
-  agent.prompt,                        // Agent-specific additions
+  ...SystemPrompt.provider(model), // Model-specific prompt
+  ...(await SystemPrompt.environment(model)), // Environment info
+  ...(await InstructionPrompt.system()), // AGENTS.md, CLAUDE.md
+  agent.prompt, // Agent-specific additions
 ].join("\n\n")
 ```
 
 **Options:**
+
 1. **New endpoint**: `GET /session/:id/system_prompt` returns assembled prompt
 2. **Include in tools response**: Return `{ tools, instructions }` together
 3. **Client-side assembly**: Client calls multiple endpoints and assembles
@@ -370,6 +383,7 @@ const systemPrompt = [
 ### 3. Frontend Tool Handler
 
 In `useRealtimeConnection.ts`, need to:
+
 ```typescript
 session.on("function_call_arguments.done", async (event) => {
   const { name, arguments: args, call_id } = event
@@ -386,12 +400,12 @@ session.on("function_call_arguments.done", async (event) => {
   if (result.error) {
     session.sendFunctionCallOutput({
       callId: call_id,
-      output: JSON.stringify({ error: result.error })
+      output: JSON.stringify({ error: result.error }),
     })
   } else {
     session.sendFunctionCallOutput({
       callId: call_id,
-      output: result.data?.result ?? ""
+      output: result.data?.result ?? "",
     })
   }
 })
@@ -400,6 +414,7 @@ session.on("function_call_arguments.done", async (event) => {
 ### 4. Tool Configuration on Connect
 
 When creating the RealtimeSession:
+
 ```typescript
 // Fetch tools from server
 const toolsResponse = await sdk.client.session.tools({ sessionID })
@@ -413,7 +428,7 @@ const instructions = promptResponse.data
 const agent = new RealtimeAgent({
   name: "OpenCode",
   instructions,
-  tools,  // OpenAI function format
+  tools, // OpenAI function format
 })
 ```
 
@@ -424,18 +439,21 @@ const agent = new RealtimeAgent({
 ### Phase 4a: Tool Definitions
 
 1. Create `session/tools.ts` module:
+
    ```typescript
    export namespace SessionTools {
      export const ListInput = z.object({
        sessionID: Identifier.schema("session"),
      })
 
-     export const ListOutput = z.array(z.object({
-       type: z.literal("function"),
-       name: z.string(),
-       description: z.string(),
-       parameters: z.any(), // JSON Schema
-     }))
+     export const ListOutput = z.array(
+       z.object({
+         type: z.literal("function"),
+         name: z.string(),
+         description: z.string(),
+         parameters: z.any(), // JSON Schema
+       }),
+     )
 
      export async function list(input: ListInput): Promise<ListOutput>
    }
@@ -448,6 +466,7 @@ const agent = new RealtimeAgent({
 ### Phase 4b: System Prompt Endpoint
 
 1. Create `session/system_prompt.ts` module:
+
    ```typescript
    export namespace SessionSystemPrompt {
      export async function get(sessionID: string): Promise<string>
@@ -477,6 +496,7 @@ const agent = new RealtimeAgent({
 ## Tasks
 
 ### Server (Current - Working but needs revision)
+
 - [x] `POST /session/:id/tool/call` endpoint (Phase 2, extracted to module)
 - [x] Create `session/tool.ts` module with `SessionTool.list()` and `SessionTool.call()`
 - [x] `GET /session/:id/tools` - List available tools in OpenAI function format
@@ -485,6 +505,7 @@ const agent = new RealtimeAgent({
 - [x] Filter tools for voice mode (exclude task, question, batch, etc.)
 
 ### Client (Current - Working but hits token limits)
+
 - [x] Fetch tools on connect via `sdk.client.session.tools.list()`
 - [x] Fetch system prompt on connect via `sdk.client.session.systemPrompt.get()`
 - [x] Configure RealtimeAgent with server-provided instructions
@@ -496,6 +517,7 @@ const agent = new RealtimeAgent({
 - [ ] Error handling and retry logic
 
 ### ⚠️ BLOCKED: Token Limit Issue
+
 The above implementation works but hits gpt-4o-realtime's 40k TPM limit quickly.
 **Next step**: Implement Phase 4e (Subagent Architecture) to resolve this.
 
@@ -576,7 +598,8 @@ Create a new tool specifically for voice mode that calls a text model:
 export const VoiceSubagentTool: Tool.Info = {
   id: "subagent",
   init: async () => ({
-    description: "Delegate complex tasks to a text-based assistant. Use for file operations, code analysis, web searches, and any task requiring detailed output.",
+    description:
+      "Delegate complex tasks to a text-based assistant. Use for file operations, code analysis, web searches, and any task requiring detailed output.",
     parameters: z.object({
       task: z.string().describe("Description of what you want the assistant to do"),
       context: z.string().optional().describe("Any relevant context from the conversation"),
@@ -611,9 +634,9 @@ Update client-side filter in `use-realtime-connection.ts`:
 ```typescript
 // Only these tools for realtime agent
 const VOICE_REALTIME_TOOLS = new Set([
-  "glob",      // Light - returns file paths only
-  "grep",      // Light - returns matching lines
-  "subagent",  // Delegates to text model
+  "glob", // Light - returns file paths only
+  "grep", // Light - returns matching lines
+  "subagent", // Delegates to text model
 ])
 ```
 
@@ -671,6 +694,7 @@ execute: async (args, ctx) => {
 **3 files modified, no new state:**
 
 **File 1: `packages/app/src/context/local.tsx`** ✅
+
 - [x] Removed `GPT_REALTIME_MODEL` constant entirely
 - [x] Removed `CLIENT_SIDE_MODEL_ID` and `CLIENT_SIDE_PROVIDER_ID` constants
 - [x] Removed `ClientSideModelProps` type
@@ -680,6 +704,7 @@ execute: async (args, ctx) => {
 - Result: Model picker shows only text models (GPT Realtime no longer appears)
 
 **File 2: `packages/app/src/context/voice-mode.tsx`** ✅
+
 - [x] Deleted `isVoiceModel` (only used by auto-connect effects)
 - [x] Deleted `onMount` auto-connect block
 - [x] Deleted `createEffect` model-change watcher
@@ -687,6 +712,7 @@ execute: async (args, ctx) => {
 - Result: Voice mode no longer auto-connects; user must manually start call
 
 **File 3: `packages/app/src/components/prompt-input.tsx`** ✅
+
 - [x] Changed `isVoiceModel` to `isVoiceModeAvailable`:
   ```typescript
   const isVoiceModeAvailable = createMemo(() => providers.connected().some((p) => p.id === "openai"))
@@ -704,6 +730,7 @@ execute: async (args, ctx) => {
   ```
 
 **File 4: `packages/app/src/hooks/use-realtime-connection.ts`** ✅
+
 - [x] Tools temporarily disabled for dual agent testing
 - [x] Message history limit removed - now loads ALL messages to match regular agent
 
@@ -727,6 +754,7 @@ execute: async (args, ctx) => {
 #### Phase 4e-1 Testing (Chrome plugin, text input OK)
 
 **Test Story A: Text-first**
+
 - [ ] Send text message → regular model responds ✓
 - [ ] Start voice call
 - [ ] Send text message → realtime model responds ✓
@@ -735,6 +763,7 @@ execute: async (args, ctx) => {
 - [ ] Verify: all messages in conversation, no data loss
 
 **Test Story B: Voice-first**
+
 - [ ] Start voice call
 - [ ] Send text message → realtime model responds ✓
 - [ ] End call
@@ -742,6 +771,7 @@ execute: async (args, ctx) => {
 - [ ] Verify: all messages in conversation, no data loss
 
 **Edge case: Mid-response call start**
+
 - [ ] Send text message, while streaming click "Start Call"
 - [ ] Expected: text response continues displaying, realtime agent may miss in-flight response
 - [ ] Acceptable for v1 - user initiated the switch, they can see the text response on screen
@@ -756,6 +786,7 @@ execute: async (args, ctx) => {
 **Changes made:**
 
 **Backend: `packages/opencode/src/session/tool.ts`** ✅
+
 - [x] Updated `CallInput` schema to include `model` and `agent` parameters
 - [x] Assistant message now uses `input.model.modelID/providerID` instead of `"client"`
 - [x] Mode changed from `"client"` to `"build"`
@@ -763,17 +794,21 @@ execute: async (args, ctx) => {
 - [x] `ToolRegistry.tools()` uses provided model for tool selection
 
 **SDK regenerated** ✅
+
 - [x] Ran `bun run build` in `packages/sdk/js` to regenerate types
 
 **Frontend: `packages/app/src/util/openai-realtime-tool.ts`** ✅
+
 - [x] Added `model` and `agent` to `CreateAgentToolsOptions` interface
 - [x] Tool calls now pass `model` and `agent` to server
 
 **Frontend: `packages/app/src/hooks/use-realtime-connection.ts`** ✅
+
 - [x] Added `model` and `agent` to `RealtimeConnectionConfig` interface
 - [x] Updated commented tool creation code to show usage
 
 **Frontend: `packages/app/src/context/voice-mode.tsx`** ✅
+
 - [x] Added `useLocal` import and `currentModel()`/`currentAgent()` memos
 - [x] Pass `model` and `agent` to `useRealtimeConnection` hook
 - [x] Updated `addAssistantMessageToUI` to use current text model (not hardcoded "gpt-realtime")
@@ -781,6 +816,7 @@ execute: async (args, ctx) => {
 - Result: Voice transcripts use same model info as regular messages - unified transcript
 
 **Tests: `packages/opencode/test/session/tool.test.ts`** ✅
+
 - [x] Updated all `SessionTool.call` invocations with required `model` and `agent` parameters
 
 **Solution:** Make `SessionTool.call` accept actual model/agent info, mirroring `SessionPrompt.prompt`:
@@ -788,6 +824,7 @@ execute: async (args, ctx) => {
 **File: `packages/opencode/src/session/tool.ts`**
 
 - [ ] **Update CallInput schema** (lines 117-122):
+
   ```typescript
   export const CallInput = z.object({
     sessionID: Identifier.schema("session"),
@@ -804,6 +841,7 @@ execute: async (args, ctx) => {
   ```
 
 - [ ] **Update assistant message creation** (lines 167-181):
+
   ```typescript
   const assistantMessage: MessageV2.Assistant = {
     id: messageID,
@@ -811,10 +849,10 @@ execute: async (args, ctx) => {
     sessionID,
     time: { created: startTime },
     parentID,
-    modelID: input.model.modelID,      // ← From input
+    modelID: input.model.modelID, // ← From input
     providerID: input.model.providerID, // ← From input
-    mode: "build",                       // ← Standard mode
-    agent: input.agent,                  // ← From input
+    mode: "build", // ← Standard mode
+    agent: input.agent, // ← From input
     path: { cwd: Instance.directory, root: Instance.worktree },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -822,11 +860,12 @@ execute: async (args, ctx) => {
   ```
 
 - [ ] **Update Tool.Context** (lines 203-212):
+
   ```typescript
   const ctx: Tool.Context = {
     sessionID,
     messageID,
-    agent: input.agent,  // ← From input (was "client")
+    agent: input.agent, // ← From input (was "client")
     abort: abortController.signal,
     callID: callId,
     messages,
@@ -836,6 +875,7 @@ execute: async (args, ctx) => {
   ```
 
 - [ ] **Update ToolRegistry lookup** (line 151):
+
   ```typescript
   // Before: hardcoded "openai/gpt-4"
   const allTools = await ToolRegistry.tools({ providerID: "openai", modelID: "gpt-4" })
@@ -847,7 +887,7 @@ execute: async (args, ctx) => {
 **File: `packages/opencode/src/server/routes/session.ts`**
 
 - [ ] **Update route schema** (around line 1090):
-  Add `model` and `agent` to the request body validation
+      Add `model` and `agent` to the request body validation
 
 **File: `packages/app/src/util/openai-realtime-tool.ts`**
 
@@ -858,8 +898,8 @@ execute: async (args, ctx) => {
     toolName: definition.name,
     callId,
     arguments: input as Record<string, unknown>,
-    model: options.model,   // NEW: Pass from connection config
-    agent: options.agent,   // NEW: Pass from connection config
+    model: options.model, // NEW: Pass from connection config
+    agent: options.agent, // NEW: Pass from connection config
   })
   ```
 
@@ -871,6 +911,7 @@ execute: async (args, ctx) => {
   - Pass to `toOpenAIAgentTools()` options
 
 **Result:**
+
 - Task tool inherits real model (e.g., `anthropic/claude-sonnet`)
 - Subagent spawns with correct model
 - Tool registry uses correct model for tool selection
@@ -883,11 +924,12 @@ execute: async (args, ctx) => {
 **File: `packages/opencode/src/session/tool.ts`**
 
 - [x] **Add task to VOICE_MODE_TOOLS** (line 48-52):
+
   ```typescript
   const VOICE_MODE_TOOLS = new Set([
-    "glob",   // Lightweight - returns paths only
-    "grep",   // Lightweight - returns matching lines
-    "task",   // Subagent delegation - key for voice orchestrator pattern
+    "glob", // Lightweight - returns paths only
+    "grep", // Lightweight - returns matching lines
+    "task", // Subagent delegation - key for voice orchestrator pattern
   ])
   ```
 
@@ -902,6 +944,7 @@ execute: async (args, ctx) => {
 **File: `packages/opencode/src/session/system.ts`** ✅
 
 - [x] **Added voice-specific prompt support**:
+
   ```typescript
   import PROMPT_VOICE from "./prompt/voice.txt"
 
@@ -917,6 +960,7 @@ execute: async (args, ctx) => {
 **File: `packages/opencode/src/session/prompt/voice.txt`** ✅ (NEW)
 
 Created condensed voice prompt that:
+
 - Explains the orchestrator role (delegate complex work to task tool)
 - Lists available tools (glob, grep, task)
 - Provides clear examples of when to use task vs direct tools
@@ -931,6 +975,7 @@ Created condensed voice prompt that:
 **Problem:** Voice mode doesn't handle subagent progress/completion properly.
 
 **Current Flow (broken for task tool):**
+
 ```
 1. OpenAI Realtime sends function_call → client
 2. Client HTTP POSTs to /session/:id/tool/call (blocking)
@@ -944,12 +989,14 @@ Created condensed voice prompt that:
 ```
 
 **Issues:**
+
 1. **No intermediate feedback**: User hears nothing while subagent runs (10-60s silence)
 2. **No UI progress**: Regular text mode shows subagent tool calls in real-time via SSE; voice mode shows nothing
 3. **HTTP timeout risk**: Long-running subagent may exceed HTTP timeout
 4. **Voice agent doesn't speak result**: After tool completes, the realtime agent needs to generate a spoken response from the tool output — need to verify this works end-to-end
 
 **What regular text mode does differently:**
+
 - Frontend subscribes to SSE stream (`/session/:id/events`)
 - SSE delivers `MessageV2.Event.PartUpdated` events in real-time
 - UI renders each tool call, partial results, text chunks as they arrive
@@ -958,6 +1005,7 @@ Created condensed voice prompt that:
 **Possible Solutions:**
 
 **Option A: Accept synchronous blocking (v1 - simplest)**
+
 - Keep current HTTP POST blocking approach
 - Voice prompt instructs agent to say filler phrase ("Let me look into that")
 - Client shows a spinner/indicator while waiting
@@ -965,12 +1013,14 @@ Created condensed voice prompt that:
 - Risk: Very long tasks may still timeout
 
 **Option B: SSE subscription during tool calls**
+
 - Client subscribes to SSE for the subagent's session
 - Shows progress in UI while waiting for HTTP response
 - Still blocks on HTTP for the final result
 - More complex but better UX
 
 **Option C: Async tool execution with polling**
+
 - `POST /tool/call` returns immediately with a `taskID`
 - Client polls or subscribes to SSE for completion
 - When done, client sends `function_call_output` to OpenAI
@@ -983,11 +1033,13 @@ Created condensed voice prompt that:
 #### Phase 4e-6: Testing & Validation
 
 **Test 1: Model Inheritance**
+
 - [ ] Call `/session/:id/tool/call` with model `anthropic/claude-sonnet`
 - [ ] Verify assistant message has correct modelID/providerID
 - [ ] Trigger task tool, verify subagent uses same model
 
 **Test 2: Voice → Task Flow**
+
 - [ ] Start voice call
 - [ ] Ask "What files are in the src folder?"
 - [ ] Verify: Voice agent uses task tool (not glob directly per prompt guidance)
@@ -995,18 +1047,21 @@ Created condensed voice prompt that:
 - [ ] Verify: Voice speaks summary of task result
 
 **Test 3: Handoff Voice → Text**
+
 - [ ] Start voice call, invoke task
 - [ ] End voice call
 - [ ] Send text message
 - [ ] Verify: Regular agent sees voice transcripts + subagent results
 
 **Test 4: Handoff Text → Voice**
+
 - [ ] Send text message with tool calls
 - [ ] Start voice call
 - [ ] Verify: Voice agent loads history including tool results
 - [ ] Invoke task, verify same model used
 
 **Test 5: Long-Running Task**
+
 - [ ] Start voice call
 - [ ] Request complex multi-file analysis
 - [ ] Verify: Voice says filler phrase, waits for completion
@@ -1028,14 +1083,14 @@ Created condensed voice prompt that:
 
 ### Risks & Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| Latency from subagent call | Task tool blocks synchronously; use fast model for subagent |
-| HTTP timeout during long tasks | Increase timeout for tool/call; voice prompt says filler phrase |
-| No progress feedback during task | v1: filler phrase + spinner; v2: SSE subscription for subagent session |
-| Token limits with full env files | Monitor usage; truncate AGENTS.md if needed |
-| Subagent errors not surfaced | Return clear error messages; voice speaks error summary |
-| Model mismatch in handoffs | Always pass explicit model; never rely on "client" |
+| Risk                             | Mitigation                                                                 |
+| -------------------------------- | -------------------------------------------------------------------------- |
+| Latency from subagent call       | Task tool blocks synchronously; use fast model for subagent                |
+| HTTP timeout during long tasks   | Increase timeout for tool/call; voice prompt says filler phrase            |
+| No progress feedback during task | v1: filler phrase + spinner; v2: SSE subscription for subagent session     |
+| Token limits with full env files | Monitor usage; truncate AGENTS.md if needed                                |
+| Subagent errors not surfaced     | Return clear error messages; voice speaks error summary                    |
+| Model mismatch in handoffs       | Always pass explicit model; never rely on "client"                         |
 | Voice agent doesn't speak result | Verify OpenAI Realtime generates spoken response from function_call_output |
 
 ---
@@ -1045,11 +1100,13 @@ Created condensed voice prompt that:
 The OpenAI `chatSupervisor` example (`tmp/openai-realtime-agents/src/app/agentConfigs/chatSupervisor/`) demonstrates:
 
 **Junior Agent (Realtime):**
+
 - Minimal capabilities, delegates everything to supervisor
 - Says filler phrase before calling supervisor ("Just a second")
 - Reads supervisor response verbatim
 
 **Supervisor Agent (Text):**
+
 - Full tool access
 - Gets conversation history + context
 - Returns formatted message

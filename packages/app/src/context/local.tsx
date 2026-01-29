@@ -137,7 +137,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return models.find(key)
       })
 
-      const recent = createMemo(() => models.recent.list().map((key) => models.find(key)).filter(Boolean))
+      const recent = createMemo(() =>
+        models.recent
+          .list()
+          .map((key) => models.find(key))
+          .filter(Boolean),
+      )
 
       const cycle = (direction: 1 | -1) => {
         const recentList = recent()

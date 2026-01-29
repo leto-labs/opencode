@@ -45,11 +45,7 @@ export namespace SessionTool {
    * - skill, todo_write, todo_read: noisy for voice
    * - apply_patch, lsp: complex
    */
-  const VOICE_MODE_TOOLS = new Set([
-    "glob",
-    "grep",
-    "task",
-  ])
+  const VOICE_MODE_TOOLS = new Set(["glob", "grep", "task"])
 
   /**
    * OpenAI function tool definition format.
