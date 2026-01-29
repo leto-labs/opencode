@@ -143,16 +143,16 @@ If you haven't configured providers yet, you have two options:
 
 **Environment variable reference:**
 
-| Variable | Required | Description |
-|---|---|---|
-| `OPENCODE_SERVER_PASSWORD` | Yes | Password for HTTP Basic Auth |
-| `OPENCODE_SERVER_USERNAME` | No | Username for HTTP Basic Auth (default: `opencode`) |
-| `ANTHROPIC_API_KEY` | No | API key for Anthropic/Claude (if not configured via UI) |
-| `OPENAI_API_KEY` | No | API key for OpenAI (if not configured via UI) |
-| `OPENCODE_CONFIG` | No | Path to a custom config file |
-| `OPENCODE_CONFIG_DIR` | No | Custom config directory |
-| `OPENCODE_DISABLE_AUTOUPDATE` | No | Set `true` to disable auto-update checks |
-| `OPENCODE_DISABLE_LSP_DOWNLOAD` | No | Set `true` to skip LSP server downloads |
+| Variable                        | Required | Description                                             |
+| ------------------------------- | -------- | ------------------------------------------------------- |
+| `OPENCODE_SERVER_PASSWORD`      | Yes      | Password for HTTP Basic Auth                            |
+| `OPENCODE_SERVER_USERNAME`      | No       | Username for HTTP Basic Auth (default: `opencode`)      |
+| `ANTHROPIC_API_KEY`             | No       | API key for Anthropic/Claude (if not configured via UI) |
+| `OPENAI_API_KEY`                | No       | API key for OpenAI (if not configured via UI)           |
+| `OPENCODE_CONFIG`               | No       | Path to a custom config file                            |
+| `OPENCODE_CONFIG_DIR`           | No       | Custom config directory                                 |
+| `OPENCODE_DISABLE_AUTOUPDATE`   | No       | Set `true` to disable auto-update checks                |
+| `OPENCODE_DISABLE_LSP_DOWNLOAD` | No       | Set `true` to skip LSP server downloads                 |
 
 ### 4. Create the systemd Service
 
@@ -330,8 +330,8 @@ OpenCode reads configuration from `~/.opencode/opencode.jsonc` (global) and `ope
     "port": 4096,
     "hostname": "0.0.0.0",
     "mdns": false,
-    "cors": ["https://opencode.yourdomain.com"]
-  }
+    "cors": ["https://opencode.yourdomain.com"],
+  },
 }
 ```
 
@@ -374,16 +374,16 @@ The server exposes a full REST API. When the server is running, visit `/doc` for
 
 Key endpoints:
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/session` | GET | List sessions |
-| `/session` | POST | Create a new session |
-| `/session/:id/message` | POST | Send a message/prompt |
-| `/event` | GET | SSE event stream |
-| `/path` | GET | Get server paths |
-| `/vcs` | GET | Get git branch info |
-| `/agent` | GET | List available agents |
-| `/doc` | GET | OpenAPI documentation |
+| Endpoint               | Method | Description           |
+| ---------------------- | ------ | --------------------- |
+| `/session`             | GET    | List sessions         |
+| `/session`             | POST   | Create a new session  |
+| `/session/:id/message` | POST   | Send a message/prompt |
+| `/event`               | GET    | SSE event stream      |
+| `/path`                | GET    | Get server paths      |
+| `/vcs`                 | GET    | Get git branch info   |
+| `/agent`               | GET    | List available agents |
+| `/doc`                 | GET    | OpenAPI documentation |
 
 ## Troubleshooting
 
