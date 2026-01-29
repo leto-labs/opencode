@@ -10,7 +10,70 @@ import { Instance } from "../../src/project/instance"
 const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
 
+// Default model and agent for tests
+const TEST_MODEL = { providerID: "openai", modelID: "gpt-4" }
+const TEST_AGENT = "default"
+
 describe("SessionTool", () => {
+  describe("list", () => {
+    test("should return tools in OpenAI function format", async () => {
+      await Instance.provide({
+        directory: projectRoot,
+        fn: async () => {
+          const session = await Session.create({})
+
+          const tools = await SessionTool.list({ sessionID: session.id })
+
+          // Should return an array of tools
+          expect(Array.isArray(tools)).toBe(true)
+          expect(tools.length).toBeGreaterThan(0)
+
+          // Each tool should have the expected format
+          const readTool = tools.find((t) => t.name === "read")
+          expect(readTool).toBeDefined()
+          expect(readTool!.type).toBe("function")
+          expect(readTool!.description).toBeDefined()
+          expect(readTool!.parameters).toBeDefined()
+
+          // Parameters should be a JSON Schema (either directly or wrapped)
+          // zod-to-json-schema may return different structures
+          expect(typeof readTool!.parameters).toBe("object")
+
+          await Session.remove(session.id)
+        },
+      })
+    })
+
+    test("should throw error for non-existent session", async () => {
+      await Instance.provide({
+        directory: projectRoot,
+        fn: async () => {
+          await expect(SessionTool.list({ sessionID: "ses_nonexistent123" })).rejects.toThrow()
+        },
+      })
+    })
+
+    test("should include common tools", async () => {
+      await Instance.provide({
+        directory: projectRoot,
+        fn: async () => {
+          const session = await Session.create({})
+
+          const tools = await SessionTool.list({ sessionID: session.id })
+          const toolNames = tools.map((t) => t.name)
+
+          // Check for some common tools
+          expect(toolNames).toContain("read")
+          expect(toolNames).toContain("glob")
+          expect(toolNames).toContain("grep")
+          expect(toolNames).toContain("bash")
+
+          await Session.remove(session.id)
+        },
+      })
+    })
+  })
+
   describe("call", () => {
     test("should return error for non-existent tool", async () => {
       await Instance.provide({
@@ -23,6 +86,8 @@ describe("SessionTool", () => {
             toolName: "nonexistent_tool",
             callId: "call_123",
             arguments: {},
+            model: TEST_MODEL,
+            agent: TEST_AGENT,
           })
 
           expect(result.callId).toBe("call_123")
@@ -44,6 +109,8 @@ describe("SessionTool", () => {
               toolName: "read",
               callId: "call_123",
               arguments: { filePath: "/tmp/test.txt" },
+              model: TEST_MODEL,
+              agent: TEST_AGENT,
             }),
           ).rejects.toThrow()
         },
@@ -69,6 +136,8 @@ describe("SessionTool", () => {
             toolName: "read",
             callId: "call_456",
             arguments: { filePath: path.join(projectRoot, "package.json") },
+            model: TEST_MODEL,
+            agent: TEST_AGENT,
           })
 
           expect(result.callId).toBe("call_456")
@@ -111,6 +180,8 @@ describe("SessionTool", () => {
             toolName: "read",
             callId: "call_789",
             arguments: { filePath: path.join(projectRoot, "package.json") },
+            model: TEST_MODEL,
+            agent: TEST_AGENT,
           })
 
           // Verify the assistant message has the correct parentID
@@ -138,6 +209,8 @@ describe("SessionTool", () => {
             toolName: "read",
             callId: "call_error",
             arguments: { filePath: "/nonexistent/path/to/file.txt" },
+            model: TEST_MODEL,
+            agent: TEST_AGENT,
           })
 
           expect(result.callId).toBe("call_error")
@@ -174,6 +247,8 @@ describe("SessionTool", () => {
             toolName: "read",
             callId: "call_timestamp",
             arguments: { filePath: path.join(projectRoot, "package.json") },
+            model: TEST_MODEL,
+            agent: TEST_AGENT,
           })
 
           const updatedSession = await Session.get(session.id)
@@ -226,6 +301,8 @@ describe("SessionTool", () => {
             toolName: "read",
             callId: "call_workflow",
             arguments: { filePath: path.join(projectRoot, "package.json") },
+            model: TEST_MODEL,
+            agent: TEST_AGENT,
           })
           expect(toolResult.result).toBeDefined()
           expect(toolResult.error).toBeUndefined()

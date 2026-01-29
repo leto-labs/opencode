@@ -12,6 +12,8 @@ import { SessionClientSecret } from "../../session/client_secret"
 import { SessionTool } from "../../session/tool"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
+import { SystemPrompt } from "../../session/system"
+import { InstructionPrompt } from "../../session/instruction"
 import { Todo } from "../../session/todo"
 import { Agent } from "../../agent/agent"
 import { Snapshot } from "@/snapshot"
@@ -1106,6 +1108,111 @@ export const SessionRoutes = lazy(() =>
           }
           throw err
         }
+      },
+    )
+    .get(
+      "/:sessionID/tools",
+      describeRoute({
+        summary: "List available tools",
+        description:
+          "Get available tools for a session in OpenAI function calling format. Used by client-side inference to configure the provider.",
+        operationId: "session.tools.list",
+        responses: {
+          200: {
+            description: "List of tools",
+            content: {
+              "application/json": {
+                schema: resolver(SessionTool.ListOutput),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const { sessionID } = c.req.valid("param")
+
+        try {
+          const result = await SessionTool.list({ sessionID })
+          return c.json(result)
+        } catch (err) {
+          if (err instanceof Error && err.message.includes("not found")) {
+            return c.json({ error: err.message }, { status: 404 })
+          }
+          throw err
+        }
+      },
+    )
+    .get(
+      "/:sessionID/system_prompt",
+      describeRoute({
+        summary: "Get system prompt",
+        description:
+          "Get the assembled system prompt for a session. Combines model-specific prompts, environment info, and user instruction files (AGENTS.md, CLAUDE.md).",
+        operationId: "session.systemPrompt.get",
+        responses: {
+          200: {
+            description: "System prompt",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    instructions: z.string(),
+                  }),
+                ),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator(
+        "query",
+        z.object({
+          modelID: z.string().meta({ description: "Model ID for model-specific prompts (e.g., gpt-realtime, claude-3-5-sonnet)" }),
+          providerID: z.string().meta({ description: "Provider ID (e.g., openai, anthropic)" }),
+        }),
+      ),
+      async (c) => {
+        const { sessionID } = c.req.valid("param")
+        const { modelID, providerID } = c.req.valid("query")
+
+        // Verify session exists
+        const session = await Session.get(sessionID)
+        if (!session) {
+          return c.json({ error: "Session not found" }, { status: 404 })
+        }
+
+        // Build system prompt from various sources
+        const model = {
+          api: { id: modelID },
+          providerID,
+        } as Parameters<typeof SystemPrompt.provider>[0]
+
+        const parts = [
+          // Model-specific prompt (beast mode for GPT, anthropic for claude, etc.)
+          ...SystemPrompt.provider(model),
+          // Environment info (directory, platform, date)
+          ...(await SystemPrompt.environment(model)),
+          // User instruction files (AGENTS.md, CLAUDE.md, etc.)
+          ...(await InstructionPrompt.system()),
+        ]
+
+        const instructions = parts.filter(Boolean).join("\n\n")
+
+        return c.json({ instructions })
       },
     ),
 )

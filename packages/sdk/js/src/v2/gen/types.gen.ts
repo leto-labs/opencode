@@ -3957,6 +3957,11 @@ export type SessionToolCallData = {
     arguments: {
       [key: string]: unknown
     }
+    model: {
+      providerID: string
+      modelID: string
+    }
+    agent?: string
   }
   path: {
     /**
@@ -3995,6 +4000,86 @@ export type SessionToolCallResponses = {
 }
 
 export type SessionToolCallResponse = SessionToolCallResponses[keyof SessionToolCallResponses]
+
+export type SessionToolsListData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/tools"
+}
+
+export type SessionToolsListErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionToolsListError = SessionToolsListErrors[keyof SessionToolsListErrors]
+
+export type SessionToolsListResponses = {
+  /**
+   * List of tools
+   */
+  200: Array<{
+    type: "function"
+    name: string
+    description: string
+    parameters: unknown
+    strict: boolean
+  }>
+}
+
+export type SessionToolsListResponse = SessionToolsListResponses[keyof SessionToolsListResponses]
+
+export type SessionSystemPromptGetData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query: {
+    directory?: string
+    /**
+     * Model ID for model-specific prompts (e.g., gpt-realtime, claude-3-5-sonnet)
+     */
+    modelID: string
+    /**
+     * Provider ID (e.g., openai, anthropic)
+     */
+    providerID: string
+  }
+  url: "/session/{sessionID}/system_prompt"
+}
+
+export type SessionSystemPromptGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionSystemPromptGetError = SessionSystemPromptGetErrors[keyof SessionSystemPromptGetErrors]
+
+export type SessionSystemPromptGetResponses = {
+  /**
+   * System prompt
+   */
+  200: {
+    instructions: string
+  }
+}
+
+export type SessionSystemPromptGetResponse = SessionSystemPromptGetResponses[keyof SessionSystemPromptGetResponses]
 
 export type PermissionReplyData = {
   body?: {

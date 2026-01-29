@@ -135,10 +135,14 @@ import type {
   SessionStatusResponses,
   SessionSummarizeErrors,
   SessionSummarizeResponses,
+  SessionSystemPromptGetErrors,
+  SessionSystemPromptGetResponses,
   SessionTodoErrors,
   SessionTodoResponses,
   SessionToolCallErrors,
   SessionToolCallResponses,
+  SessionToolsListErrors,
+  SessionToolsListResponses,
   SessionTranscriptAddErrors,
   SessionTranscriptAddResponses,
   SessionUnrevertErrors,
@@ -1078,6 +1082,11 @@ export class Tool2 extends HeyApiClient {
       arguments?: {
         [key: string]: unknown
       }
+      model?: {
+        providerID: string
+        modelID: string
+      }
+      agent?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1091,6 +1100,8 @@ export class Tool2 extends HeyApiClient {
             { in: "body", key: "toolName" },
             { in: "body", key: "callId" },
             { in: "body", key: "arguments" },
+            { in: "body", key: "model" },
+            { in: "body", key: "agent" },
           ],
         },
       ],
@@ -1104,6 +1115,78 @@ export class Tool2 extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+}
+
+export class Tools extends HeyApiClient {
+  /**
+   * List available tools
+   *
+   * Get available tools for a session in OpenAI function calling format. Used by client-side inference to configure the provider.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionToolsListResponses, SessionToolsListErrors, ThrowOnError>({
+      url: "/session/{sessionID}/tools",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class SystemPrompt extends HeyApiClient {
+  /**
+   * Get system prompt
+   *
+   * Get the assembled system prompt for a session. Combines model-specific prompts, environment info, and user instruction files (AGENTS.md, CLAUDE.md).
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      modelID: string
+      providerID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "modelID" },
+            { in: "query", key: "providerID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionSystemPromptGetResponses,
+      SessionSystemPromptGetErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/system_prompt",
+      ...options,
+      ...params,
     })
   }
 }
@@ -1963,6 +2046,16 @@ export class Session extends HeyApiClient {
   private _tool?: Tool2
   get tool(): Tool2 {
     return (this._tool ??= new Tool2({ client: this.client }))
+  }
+
+  private _tools?: Tools
+  get tools(): Tools {
+    return (this._tools ??= new Tools({ client: this.client }))
+  }
+
+  private _systemPrompt?: SystemPrompt
+  get systemPrompt(): SystemPrompt {
+    return (this._systemPrompt ??= new SystemPrompt({ client: this.client }))
   }
 }
 
