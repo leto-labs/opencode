@@ -21,7 +21,7 @@ OpenCode has a built-in `serve` command that starts a headless HTTP server. The 
 
 ```bash
 # Generate a strong password
-openssl rand -base64 32
+openssl rand -base64 32 | tr -dc 'A-Za-z0-9'
 
 # Set the server password (required for public exposure)
 export OPENCODE_SERVER_PASSWORD="your-strong-password"
@@ -385,6 +385,38 @@ Key endpoints:
 | `/agent`               | GET    | List available agents |
 | `/doc`                 | GET    | OpenAPI documentation |
 
+## Cross-Origin Basic Auth (Web App)
+
+When accessing an auth-protected server from a cross-origin web app (e.g. `app.opencode.ai` connecting to your server), the browser will not show its native auth dialog for `fetch()` requests. Instead, the web app handles credentials via the server URL.
+
+### Adding an auth-protected server
+
+In the server dialog, enter the URL with embedded credentials:
+
+```
+opencode:<password>@yourserver.example.com:4096
+```
+
+The app extracts the credentials, stores them separately, and displays only the hostname. All subsequent API requests include the `Authorization: Basic ...` header automatically.
+
+### Password requirements
+
+Because credentials are embedded in a URL, the password must only contain URL-safe characters. Avoid `@`, `:`, `/`, `?`, `#`, `+`, `=`, and other characters with special meaning in URLs.
+
+Generate a URL-safe password:
+
+```bash
+openssl rand -base64 32 | tr -dc 'A-Za-z0-9'
+```
+
+### How it works
+
+1. User enters `opencode:pass@host` in the server dialog
+2. The app extracts credentials and stores them in a separate persisted auth record (never in the URL)
+3. The stored/displayed URL is the clean `http://host` form
+4. All SDK clients (`health`, `event`, `session`, etc.) attach `Authorization` headers from the auth store
+5. The server's CORS middleware runs before auth so that browser `OPTIONS` preflight requests succeed without credentials
+
 ## Troubleshooting
 
 **Server won't start / port in use:**
@@ -392,6 +424,12 @@ Check if something else is on port 4096: `ss -tlnp | grep 4096`. Change the port
 
 **Authentication not working:**
 Verify `OPENCODE_SERVER_PASSWORD` is set: `sudo systemctl show opencode -p Environment` won't show `EnvironmentFile` contents, so check `/etc/opencode/env` directly.
+
+**Cross-origin auth failing (401 on OPTIONS):**
+The server's CORS middleware must run before the basic auth middleware. If you see 401 errors on preflight `OPTIONS` requests in the browser console, ensure the server has the correct middleware order (CORS → auth). This is the default in the current codebase.
+
+**Password with special characters not working:**
+If your password contains `+`, `/`, `=`, `@`, or other URL-special characters, the URL parser may split incorrectly. Use an alphanumeric password (see [Password requirements](#password-requirements)).
 
 **Web UI not loading:**
 The web UI is proxied from `app.opencode.ai`. The server must have outbound internet access to serve the frontend assets. Ensure DNS resolution and HTTPS egress are not blocked.

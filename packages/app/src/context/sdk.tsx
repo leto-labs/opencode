@@ -18,6 +18,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
         fetch: platform.fetch,
         directory: directory(),
         throwOnError: true,
+        headers: globalSDK.authHeaders,
       }),
     )
 
@@ -42,6 +43,9 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       event: emitter,
       get url() {
         return globalSDK.url
+      },
+      get authHeaders() {
+        return globalSDK.authHeaders
       },
     }
   },

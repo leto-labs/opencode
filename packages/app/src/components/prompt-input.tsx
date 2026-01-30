@@ -1225,6 +1225,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           fetch: platform.fetch,
           directory: sessionDirectory,
           throwOnError: true,
+          headers: sdk.authHeaders,
         })
         globalSync.child(sessionDirectory)
       }
