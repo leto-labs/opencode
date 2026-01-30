@@ -22,6 +22,15 @@ pub enum Error {
 
     #[error(transparent)]
     Tauri(#[from] tauri::Error),
+
+    #[error("Plugin invoke error: {0}")]
+    PluginInvoke(String),
+}
+
+impl From<tauri::plugin::mobile::PluginInvokeError> for Error {
+    fn from(err: tauri::plugin::mobile::PluginInvokeError) -> Self {
+        Error::PluginInvoke(err.to_string())
+    }
 }
 
 impl Serialize for Error {

@@ -19,6 +19,9 @@ pub use error::{Error, Result};
 #[cfg(target_os = "ios")]
 tauri::ios_plugin_binding!(init_plugin_audio_bridge);
 
+#[cfg(target_os = "android")]
+const PLUGIN_IDENTIFIER: &str = "app.tauri.audiobridge";
+
 /// Access to the audio bridge APIs.
 pub struct AudioBridge<R: Runtime>(PluginHandle<R>);
 
@@ -76,6 +79,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .setup(|app, api| {
             #[cfg(target_os = "ios")]
             let handle = api.register_ios_plugin(init_plugin_audio_bridge)?;
+            #[cfg(target_os = "android")]
+            let handle = api.register_android_plugin(PLUGIN_IDENTIFIER, "AudioBridgePlugin")?;
             app.manage(AudioBridge(handle));
             Ok(())
         })
