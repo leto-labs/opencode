@@ -23,6 +23,13 @@ import { initI18n, t } from "./i18n"
 import pkg from "../package.json"
 import "./styles.css"
 
+declare global {
+  interface Window {
+    __TAURI_INTERNALS__?: any
+    __TAURI_IPC__?: any
+  }
+}
+
 const root = document.getElementById("root")
 if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   throw new Error(t("error.dev.rootNotFound"))
@@ -59,44 +66,35 @@ const listenForDeepLinks = async () => {
   await onOpenUrl((urls) => emitDeepLinks(urls)).catch(() => undefined)
 }
 
-const createPlatform = (password: Accessor<string | null>): Platform => ({
-  platform: "desktop",
-  os: (() => {
-    const type = ostype()
-    if (type === "macos" || type === "windows" || type === "linux") return type
-    return undefined
-  })(),
-  version: pkg.version,
+const createPlatform = (password: Accessor<string | null>): Platform => {
+  // Detect if we're on mobile (iOS/Android)
+  const isMobile = (() => {
+    try {
+      const type = ostype()
+      return type !== "macos" && type !== "windows" && type !== "linux"
+    } catch {
+      // If ostype() fails, assume mobile
+      return true
+    }
+  })()
 
-  async openDirectoryPickerDialog(opts) {
-    const result = await open({
-      directory: true,
-      multiple: opts?.multiple ?? false,
-      title: opts?.title ?? t("desktop.dialog.chooseFolder"),
-    })
-    return result
-  },
+  const platform: Platform = {
+    platform: "desktop",
+    os: (() => {
+      try {
+        const type = ostype()
+        if (type === "macos" || type === "windows" || type === "linux") return type
+        return undefined
+      } catch {
+        // ostype() fails on mobile or before Tauri is ready
+        return undefined
+      }
+    })(),
+    version: pkg.version,
 
-  async openFilePickerDialog(opts) {
-    const result = await open({
-      directory: false,
-      multiple: opts?.multiple ?? false,
-      title: opts?.title ?? t("desktop.dialog.chooseFile"),
-    })
-    return result
-  },
-
-  async saveFilePickerDialog(opts) {
-    const result = await save({
-      title: opts?.title ?? t("desktop.dialog.saveFile"),
-      defaultPath: opts?.defaultPath,
-    })
-    return result
-  },
-
-  openLink(url: string) {
-    void shellOpen(url).catch(() => undefined)
-  },
+    openLink(url: string) {
+      void shellOpen(url).catch(() => undefined)
+    },
 
   back() {
     window.history.back()
@@ -274,7 +272,11 @@ const createPlatform = (password: Accessor<string | null>): Platform => ({
 
   update: async () => {
     if (!UPDATER_ENABLED || !update) return
-    if (ostype() === "windows") await invoke("kill_sidecar").catch(() => undefined)
+    try {
+      if (ostype() === "windows") await invoke("kill_sidecar").catch(() => undefined)
+    } catch {
+      // ostype() fails on mobile
+    }
     await update.install().catch(() => undefined)
   },
 
@@ -343,10 +345,42 @@ const createPlatform = (password: Accessor<string | null>): Platform => ({
     await invoke("set_default_server_url", { url })
   },
 
-  parseMarkdown: async (markdown: string) => {
-    return invoke<string>("parse_markdown_command", { markdown })
-  },
-})
+    parseMarkdown: async (markdown: string) => {
+      return invoke<string>("parse_markdown_command", { markdown })
+    },
+  }
+
+  // Only provide native pickers on desktop, not mobile
+  if (!isMobile) {
+    platform.openDirectoryPickerDialog = async (opts) => {
+      const result = await open({
+        directory: true,
+        multiple: opts?.multiple ?? false,
+        title: opts?.title ?? t("desktop.dialog.chooseFolder"),
+      })
+      return result
+    }
+
+    platform.openFilePickerDialog = async (opts) => {
+      const result = await open({
+        directory: false,
+        multiple: opts?.multiple ?? false,
+        title: opts?.title ?? t("desktop.dialog.chooseFile"),
+      })
+      return result
+    }
+
+    platform.saveFilePickerDialog = async (opts) => {
+      const result = await save({
+        title: opts?.title ?? t("desktop.dialog.saveFile"),
+        defaultPath: opts?.defaultPath,
+      })
+      return result
+    }
+  }
+
+  return platform
+}
 
 createMenu()
 void listenForDeepLinks()
@@ -391,11 +425,26 @@ type ServerReadyData = { url: string; password: string | null }
 
 // Gate component that waits for the server to be ready
 function ServerGate(props: { children: (data: Accessor<ServerReadyData>) => JSX.Element }) {
-  const [serverData] = createResource<ServerReadyData>(() =>
-    invoke("ensure_server_ready").then((v) => {
-      return new Promise((res) => setTimeout(() => res(v as ServerReadyData), 2000))
-    }),
-  )
+  const [serverData] = createResource<ServerReadyData>(async () => {
+    // Wait for Tauri to be ready (especially important on mobile)
+    if (typeof window !== "undefined" && !window.__TAURI_INTERNALS__) {
+      await new Promise((resolve) => {
+        const checkTauri = setInterval(() => {
+          if (window.__TAURI_INTERNALS__) {
+            clearInterval(checkTauri)
+            resolve(undefined)
+          }
+        }, 100)
+        // Timeout after 5 seconds
+        setTimeout(() => {
+          clearInterval(checkTauri)
+          resolve(undefined)
+        }, 5000)
+      })
+    }
+
+    return invoke<ServerReadyData>("ensure_server_ready")
+  })
 
   const errorMessage = () => {
     const error = serverData.error

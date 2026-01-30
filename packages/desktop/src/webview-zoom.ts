@@ -5,15 +5,24 @@
 import { invoke } from "@tauri-apps/api/core"
 import { type as ostype } from "@tauri-apps/plugin-os"
 
-const OS_NAME = ostype()
-
 let zoomLevel = 1
 
 const MAX_ZOOM_LEVEL = 10
 const MIN_ZOOM_LEVEL = 0.2
 
+// Lazy getter for OS name - only call when needed, with error handling for mobile
+function getOSName() {
+  try {
+    return ostype()
+  } catch {
+    // Mobile or Tauri not ready yet
+    return "unknown"
+  }
+}
+
 window.addEventListener("keydown", (event) => {
-  if (OS_NAME === "macos" ? event.metaKey : event.ctrlKey) {
+  const osName = getOSName()
+  if (osName === "macos" ? event.metaKey : event.ctrlKey) {
     if (event.key === "-") {
       zoomLevel -= 0.2
     } else if (event.key === "=" || event.key === "+") {

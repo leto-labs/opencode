@@ -15,10 +15,12 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, LogicalSize, Manager, RunEvent, State, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, RunEvent, State, WebviewWindowBuilder};
+#[cfg(not(mobile))]
+use tauri::LogicalSize;
 #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
 use tauri_plugin_deep_link::DeepLinkExt;
-#[cfg(windows)]
+#[cfg(all(windows, not(mobile)))]
 use tauri_plugin_decorum::WebviewWindowExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogResult};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -215,7 +217,7 @@ fn url_is_localhost(url: &reqwest::Url) -> bool {
     })
 }
 
-async fn check_server_health(url: &str, password: Option<&str>) -> bool {
+async fn check_server_health(url: &str, username: Option<&str>, password: Option<&str>) -> bool {
     let Ok(url) = reqwest::Url::parse(url) else {
         return false;
     };
@@ -239,7 +241,8 @@ async fn check_server_health(url: &str, password: Option<&str>) -> bool {
     let mut req = client.get(health_url);
 
     if let Some(password) = password {
-        req = req.basic_auth("opencode", Some(password));
+        let username = username.unwrap_or("opencode");
+        req = req.basic_auth(username, Some(password));
     }
 
     req.send()
@@ -258,23 +261,7 @@ pub fn run() {
         .output();
 
     let mut builder = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // Focus existing window when another instance is launched
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_focus();
-                let _ = window.unminimize();
-            }
-        }))
-        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_os::init())
-        .plugin(
-            tauri_plugin_window_state::Builder::new()
-                .with_state_flags(
-                    tauri_plugin_window_state::StateFlags::all()
-                        - tauri_plugin_window_state::StateFlags::DECORATIONS,
-                )
-                .build(),
-        )
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
@@ -283,8 +270,38 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(PinchZoomDisablePlugin)
-        .plugin(tauri_plugin_decorum::init())
+        .plugin(PinchZoomDisablePlugin);
+
+    // Mobile-only plugins
+    #[cfg(mobile)]
+    {
+        builder = builder.plugin(tauri_plugin_foreground_service::init());
+    }
+
+    // Desktop-only plugins
+    #[cfg(not(mobile))]
+    {
+        builder = builder
+            .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+                // Focus existing window when another instance is launched
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_focus();
+                    let _ = window.unminimize();
+                }
+            }))
+            .plugin(tauri_plugin_deep_link::init())
+            .plugin(
+                tauri_plugin_window_state::Builder::new()
+                    .with_state_flags(
+                        tauri_plugin_window_state::StateFlags::all()
+                            - tauri_plugin_window_state::StateFlags::DECORATIONS,
+                    )
+                    .build(),
+            )
+            .plugin(tauri_plugin_decorum::init());
+    }
+
+    builder = builder
         .invoke_handler(tauri::generate_handler![
             kill_sidecar,
             install_cli,
@@ -305,11 +322,8 @@ pub fn run() {
             #[cfg(windows)]
             app.manage(JobObjectState::new());
 
-            let primary_monitor = app.primary_monitor().ok().flatten();
-            let size = primary_monitor
-                .map(|m| m.size().to_logical(m.scale_factor()))
-                .unwrap_or(LogicalSize::new(1920, 1080));
-
+            // Create window for both desktop and mobile
+            // Desktop gets custom sizing and styling, mobile uses defaults
             let config = app
                 .config()
                 .app
@@ -318,9 +332,8 @@ pub fn run() {
                 .find(|w| w.label == "main")
                 .expect("main window config missing");
 
-            let window_builder = WebviewWindowBuilder::from_config(&app, config)
+            let mut window_builder = WebviewWindowBuilder::from_config(&app, config)
                 .expect("Failed to create window builder from config")
-                .inner_size(size.width as f64, size.height as f64)
                 .initialization_script(format!(
                     r#"
                       window.__OPENCODE__ ??= {{}};
@@ -328,25 +341,40 @@ pub fn run() {
                     "#
                 ));
 
-            #[cfg(target_os = "macos")]
-            let window_builder = window_builder
-                .title_bar_style(tauri::TitleBarStyle::Overlay)
-                .hidden_title(true);
+            // Desktop-specific window configuration
+            #[cfg(not(mobile))]
+            {
+                let primary_monitor = app.primary_monitor().ok().flatten();
+                let size = primary_monitor
+                    .map(|m| m.size().to_logical(m.scale_factor()))
+                    .unwrap_or(LogicalSize::new(1920, 1080));
 
-            #[cfg(windows)]
-            let window_builder = window_builder
-                // Some VPNs set a global/system proxy that WebView2 applies even for loopback
-                // connections, which breaks the app's localhost sidecar server.
-                // Note: when setting additional args, we must re-apply wry's default
-                // `--disable-features=...` flags.
-                .additional_browser_args(
-                    "--proxy-bypass-list=<-loopback> --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection",
-                )
-                .decorations(false);
+                window_builder = window_builder.inner_size(size.width as f64, size.height as f64);
+
+                #[cfg(target_os = "macos")]
+                {
+                    window_builder = window_builder
+                        .title_bar_style(tauri::TitleBarStyle::Overlay)
+                        .hidden_title(true);
+                }
+
+                #[cfg(windows)]
+                {
+                    window_builder = window_builder
+                        // Some VPNs set a global/system proxy that WebView2 applies even for loopback
+                        // connections, which breaks the app's localhost sidecar server.
+                        // Note: when setting additional args, we must re-apply wry's default
+                        // `--disable-features=...` flags.
+                        .additional_browser_args(
+                            "--proxy-bypass-list=<-loopback> --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection",
+                        )
+                        .decorations(false);
+                }
+            }
 
             let window = window_builder.build().expect("Failed to create window");
 
-            #[cfg(windows)]
+            #[cfg(all(windows, not(mobile)))]
             let _ = window.create_overlay_titlebar();
 
             let (tx, rx) = oneshot::channel();
@@ -455,45 +483,128 @@ async fn setup_server_connection(
     custom_url: Option<String>,
 ) -> Result<(Option<CommandChild>, ServerReadyData), String> {
     if let Some(url) = custom_url {
+        // Read Basic Auth credentials from environment variable
+        // Check compile-time first, then runtime
+        let username = option_env!("OPENCODE_SERVER_USERNAME")
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("OPENCODE_SERVER_USERNAME").ok());
+        let password = option_env!("OPENCODE_SERVER_PASSWORD")
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("OPENCODE_SERVER_PASSWORD").ok());
+
         loop {
-            if check_server_health(&url, None).await {
+            if check_server_health(&url, username.as_deref(), password.as_deref()).await {
                 println!("Connected to custom server: {}", url);
                 return Ok((
                     None,
                     ServerReadyData {
                         url: url.clone(),
-                        password: None,
+                        password: password.clone(),
                     },
                 ));
             }
 
-            const RETRY: &str = "Retry";
+            #[cfg(mobile)]
+            {
+                let res = app.dialog()
+                  .message(format!("Could not connect to server:\n{}\n\nPlease check that the OpenCode server is running and accessible.", url))
+                  .title("Connection Failed")
+                  .buttons(MessageDialogButtons::OkCancel)
+                  .blocking_show_with_result();
 
-            let res = app.dialog()
-              .message(format!("Could not connect to configured server:\n{}\n\nWould you like to retry or start a local server instead?", url))
-              .title("Connection Failed")
-              .buttons(MessageDialogButtons::OkCancelCustom(RETRY.to_string(), "Start Local".to_string()))
-              .blocking_show_with_result();
-
-            match res {
-                MessageDialogResult::Custom(name) if name == RETRY => {
-                    continue;
+                match res {
+                    MessageDialogResult::Ok => {
+                        continue;
+                    }
+                    _ => {
+                        return Err("Cannot connect to server".to_string());
+                    }
                 }
-                _ => {
-                    break;
+            }
+
+            #[cfg(not(mobile))]
+            {
+                const RETRY: &str = "Retry";
+
+                let res = app.dialog()
+                  .message(format!("Could not connect to configured server:\n{}\n\nWould you like to retry or start a local server instead?", url))
+                  .title("Connection Failed")
+                  .buttons(MessageDialogButtons::OkCancelCustom(RETRY.to_string(), "Start Local".to_string()))
+                  .blocking_show_with_result();
+
+                match res {
+                    MessageDialogResult::Custom(name) if name == RETRY => {
+                        continue;
+                    }
+                    _ => {
+                        break;
+                    }
                 }
             }
         }
     }
 
-    let local_port = get_sidecar_port();
-    let hostname = "127.0.0.1";
-    let local_url = format!("http://{hostname}:{local_port}");
+    // Mobile: require custom URL, cannot spawn local server
+    #[cfg(mobile)]
+    {
+        // TODO: Implement proper mobile server discovery/configuration
+        // Options: mDNS/Bonjour discovery, QR code scanning, or settings UI
+        let default_url = if cfg!(target_os = "android") {
+            // TAURI_DEV_HOST is set at compile time by Tauri for physical devices
+            // (contains the host machine's LAN IP). For emulators it's not set,
+            // so we fall back to 10.0.2.2 (Android emulator's alias for host localhost).
+            match option_env!("TAURI_DEV_HOST") {
+                Some(host) => format!("http://{}:4096", host),
+                None => "http://10.0.2.2:4096".to_string(),
+            }
+        } else {
+            // iOS simulator shares Mac's network stack, so localhost works
+            "http://localhost:4096".to_string()
+        };
 
-    if !check_server_health(&local_url, None).await {
-        let password = uuid::Uuid::new_v4().to_string();
+        let server_url = option_env!("OPENCODE_SERVER_URL")
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("OPENCODE_SERVER_URL").ok())
+            .unwrap_or(default_url);
 
-        match spawn_local_server(app, hostname, local_port, &password).await {
+        // Read Basic Auth credentials from environment variable
+        // Check compile-time first, then runtime
+        let username = option_env!("OPENCODE_SERVER_USERNAME")
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("OPENCODE_SERVER_USERNAME").ok());
+        let password = option_env!("OPENCODE_SERVER_PASSWORD")
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("OPENCODE_SERVER_PASSWORD").ok());
+
+        // Try to connect to the server with auth
+        if check_server_health(&server_url, username.as_deref(), password.as_deref()).await {
+            println!("Connected to mobile server: {}", server_url);
+            return Ok((
+                None,
+                ServerReadyData {
+                    url: server_url,
+                    password,
+                },
+            ));
+        }
+
+        return Err(format!(
+            "No server URL configured. Please configure a remote OpenCode server.\n\nAttempted to connect to: {}",
+            server_url
+        ));
+    }
+
+    // Desktop: try to spawn local server
+    #[cfg(not(mobile))]
+    {
+        let local_port = get_sidecar_port();
+        let hostname = "127.0.0.1";
+        let local_url = format!("http://{hostname}:{local_port}");
+
+        if !check_server_health(&local_url, None, None).await {
+            let password = uuid::Uuid::new_v4().to_string();
+
+            match spawn_local_server(app, hostname, local_port, &password).await {
             Ok(child) => Ok((
                 Some(child),
                 ServerReadyData {
@@ -503,14 +614,15 @@ async fn setup_server_connection(
             )),
             Err(err) => Err(err),
         }
-    } else {
-        Ok((
-            None,
-            ServerReadyData {
-                url: local_url,
-                password: None,
-            },
-        ))
+        } else {
+            Ok((
+                None,
+                ServerReadyData {
+                    url: local_url,
+                    password: None,
+                },
+            ))
+        }
     }
 }
 
@@ -534,7 +646,7 @@ async fn spawn_local_server(
 
         tokio::time::sleep(Duration::from_millis(10)).await;
 
-        if check_server_health(&url, Some(password)).await {
+        if check_server_health(&url, Some("opencode"), Some(password)).await {
             println!("Server ready after {:?}", timestamp.elapsed());
             break Ok(child);
         }

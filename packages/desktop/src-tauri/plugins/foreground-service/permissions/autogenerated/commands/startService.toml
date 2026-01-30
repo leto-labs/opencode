@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-startService"
+description = "Enables the startService command without any pre-configured scope."
+commands.allow = ["startService"]
+
+[[permission]]
+identifier = "deny-startService"
+description = "Denies the startService command without any pre-configured scope."
+commands.deny = ["startService"]

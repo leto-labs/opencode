@@ -115,17 +115,17 @@ export const SettingsProviders: Component = () => {
   }
 
   return (
-    <div class="flex flex-col h-full overflow-y-auto no-scrollbar px-4 pb-10 sm:px-10 sm:pb-10">
+    <div class="flex flex-col h-full overflow-y-auto no-scrollbar px-4 sm:px-10 pb-6 sm:pb-10">
       <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-raised-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
-        <div class="flex flex-col gap-1 pt-6 pb-8 max-w-[720px]">
+        <div class="flex flex-col gap-1 pt-4 sm:pt-6 pb-4 sm:pb-8 max-w-[720px]">
           <h2 class="text-16-medium text-text-strong">{language.t("settings.providers.title")}</h2>
         </div>
       </div>
 
-      <div class="flex flex-col gap-8 max-w-[720px]">
+      <div class="flex flex-col gap-6 sm:gap-8 max-w-[720px]">
         <div class="flex flex-col gap-1">
           <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.providers.section.connected")}</h3>
-          <div class="bg-surface-raised-base px-4 rounded-lg">
+          <div class="bg-surface-raised-base px-3 sm:px-4 rounded-lg">
             <Show
               when={connected().length > 0}
               fallback={
@@ -136,23 +136,31 @@ export const SettingsProviders: Component = () => {
             >
               <For each={connected()}>
                 {(item) => (
-                  <div class="group flex flex-wrap items-center justify-between gap-4 min-h-16 py-3 border-b border-border-weak-base last:border-none">
+                  <div class="group flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 py-4 sm:h-16 sm:py-0 border-b border-border-weak-base last:border-none">
                     <div class="flex items-center gap-3 min-w-0">
                       <ProviderIcon id={icon(item.id)} class="size-5 shrink-0 icon-strong-base" />
                       <span class="text-14-medium text-text-strong truncate">{item.name}</span>
-                      <Tag>{type(item)}</Tag>
+                      <Tag class="hidden sm:inline-flex">{type(item)}</Tag>
                     </div>
                     <Show
                       when={canDisconnect(item)}
                       fallback={
-                        <span class="text-14-regular text-text-base opacity-0 group-hover:opacity-100 transition-opacity duration-200 pr-3 cursor-default">
+                        <span class="hidden sm:block text-14-regular text-text-base opacity-0 group-hover:opacity-100 transition-opacity duration-200 pr-3 cursor-default">
                           Connected from your environment variables
                         </span>
                       }
                     >
-                      <Button size="large" variant="ghost" onClick={() => void disconnect(item.id, item.name)}>
-                        {language.t("common.disconnect")}
-                      </Button>
+                      <div class="flex items-center gap-2 sm:gap-0">
+                        <Tag class="sm:hidden">{type(item)}</Tag>
+                        <Button
+                          size="large"
+                          variant="ghost"
+                          class="ml-auto sm:ml-0"
+                          onClick={() => void disconnect(item.id, item.name)}
+                        >
+                          {language.t("common.disconnect")}
+                        </Button>
+                      </div>
                     </Show>
                   </div>
                 )}
@@ -163,50 +171,50 @@ export const SettingsProviders: Component = () => {
 
         <div class="flex flex-col gap-1">
           <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.providers.section.popular")}</h3>
-          <div class="bg-surface-raised-base px-4 rounded-lg">
+          <div class="bg-surface-raised-base px-3 sm:px-4 rounded-lg">
             <For each={popular()}>
               {(item) => (
-                <div class="flex flex-wrap items-center justify-between gap-4 min-h-16 py-3 border-b border-border-weak-base last:border-none">
-                  <div class="flex flex-col min-w-0">
-                    <div class="flex items-center gap-x-3">
-                      <ProviderIcon id={icon(item.id)} class="size-5 shrink-0 icon-strong-base" />
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 py-4 sm:h-16 sm:py-0 border-b border-border-weak-base last:border-none">
+                  <div class="flex flex-col min-w-0 flex-1">
+                    <div class="flex items-center gap-x-2 sm:gap-x-3">
+                      <ProviderIcon id={item.id as IconName} class="size-5 shrink-0 icon-strong-base" />
                       <span class="text-14-medium text-text-strong">{item.name}</span>
                       <Show when={item.id === "opencode"}>
                         <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
                       </Show>
                     </div>
                     <Show when={item.id === "opencode"}>
-                      <span class="text-12-regular text-text-weak pl-8">
+                      <span class="text-12-regular text-text-weak pl-7 sm:pl-8 mt-1">
                         {language.t("dialog.provider.opencode.note")}
                       </span>
                     </Show>
                     <Show when={item.id === "anthropic"}>
-                      <span class="text-12-regular text-text-weak pl-8">
+                      <span class="text-12-regular text-text-weak pl-7 sm:pl-8 mt-1">
                         {language.t("dialog.provider.anthropic.note")}
                       </span>
                     </Show>
                     <Show when={item.id.startsWith("github-copilot")}>
-                      <span class="text-12-regular text-text-weak pl-8">
+                      <span class="text-12-regular text-text-weak pl-7 sm:pl-8 mt-1">
                         {language.t("dialog.provider.copilot.note")}
                       </span>
                     </Show>
                     <Show when={item.id === "openai"}>
-                      <span class="text-12-regular text-text-weak pl-8">
+                      <span class="text-12-regular text-text-weak pl-7 sm:pl-8 mt-1">
                         {language.t("dialog.provider.openai.note")}
                       </span>
                     </Show>
                     <Show when={item.id === "google"}>
-                      <span class="text-12-regular text-text-weak pl-8">
+                      <span class="text-12-regular text-text-weak pl-7 sm:pl-8 mt-1">
                         {language.t("dialog.provider.google.note")}
                       </span>
                     </Show>
                     <Show when={item.id === "openrouter"}>
-                      <span class="text-12-regular text-text-weak pl-8">
+                      <span class="text-12-regular text-text-weak pl-7 sm:pl-8 mt-1">
                         {language.t("dialog.provider.openrouter.note")}
                       </span>
                     </Show>
                     <Show when={item.id === "vercel"}>
-                      <span class="text-12-regular text-text-weak pl-8">
+                      <span class="text-12-regular text-text-weak pl-7 sm:pl-8 mt-1">
                         {language.t("dialog.provider.vercel.note")}
                       </span>
                     </Show>
@@ -215,6 +223,7 @@ export const SettingsProviders: Component = () => {
                     size="large"
                     variant="secondary"
                     icon="plus-small"
+                    class="w-full sm:w-auto"
                     onClick={() => {
                       dialog.show(() => <DialogConnectProvider provider={item.id} />)
                     }}

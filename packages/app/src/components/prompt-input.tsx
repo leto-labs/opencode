@@ -1934,111 +1934,123 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </div>
           </Show>
         </div>
-        <div class="relative p-3 flex items-center justify-between">
-          <div class="flex items-center justify-start gap-0.5">
+        {/* Controls section - refined mobile layout with visual grouping */}
+        <div class="relative px-3 pb-3 pt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 sm:pt-3">
+          {/* Configuration Row: Agent & Model selectors */}
+          <div class="flex items-center justify-start gap-1 overflow-x-auto no-scrollbar">
             <Switch>
               <Match when={store.mode === "shell"}>
-                <div class="flex items-center gap-2 px-2 h-6">
-                  <Icon name="console" size="small" class="text-icon-primary" />
-                  <span class="text-12-regular text-text-primary">{language.t("prompt.mode.shell")}</span>
-                  <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.exit")}</span>
+                <div class="flex items-center gap-2 px-2 h-8 sm:h-6">
+                  <Icon name="console" size="small" class="text-icon-primary shrink-0" />
+                  <span class="text-13-medium sm:text-12-regular text-text-primary whitespace-nowrap">{language.t("prompt.mode.shell")}</span>
+                  <span class="text-12-regular text-text-weak whitespace-nowrap hidden sm:inline">{language.t("prompt.mode.shell.exit")}</span>
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
-                <TooltipKeybind
-                  placement="top"
-                  title={language.t("command.agent.cycle")}
-                  keybind={command.keybind("agent.cycle")}
-                >
-                  <Select
-                    options={local.agent.list().map((agent) => agent.name)}
-                    current={local.agent.current()?.name ?? ""}
-                    onSelect={local.agent.set}
-                    class="capitalize"
-                    variant="ghost"
-                  />
-                </TooltipKeybind>
-                <Show
-                  when={providers.paid().length > 0}
-                  fallback={
+                {/* Mobile: Compact grouped selectors with subtle dividers */}
+                <div class="flex items-center gap-1 sm:gap-0.5">
+                  <TooltipKeybind
+                    placement="top"
+                    title={language.t("command.agent.cycle")}
+                    keybind={command.keybind("agent.cycle")}
+                  >
+                    <Select
+                      options={local.agent.list().map((agent) => agent.name)}
+                      current={local.agent.current()?.name ?? ""}
+                      onSelect={local.agent.set}
+                      class="capitalize min-h-[32px] sm:min-h-0"
+                      variant="ghost"
+                    />
+                  </TooltipKeybind>
+
+                  {/* Subtle divider on mobile */}
+                  <div class="h-5 w-px bg-border-base/50 mx-0.5 sm:hidden" />
+
+                  <Show
+                    when={providers.paid().length > 0}
+                    fallback={
+                      <TooltipKeybind
+                        placement="top"
+                        title={language.t("command.model.choose")}
+                        keybind={command.keybind("model.choose")}
+                      >
+                        <Button as="div" variant="ghost" class="min-h-[32px] sm:min-h-0" onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}>
+                          <Show when={local.model.current()?.provider?.id}>
+                            <ProviderIcon id={local.model.current()!.provider.id as IconName} class="size-4 shrink-0" />
+                          </Show>
+                          <span class="whitespace-nowrap">{local.model.current()?.name ?? language.t("dialog.model.select.title")}</span>
+                          <Icon name="chevron-down" size="small" class="shrink-0" />
+                        </Button>
+                      </TooltipKeybind>
+                    }
+                  >
                     <TooltipKeybind
                       placement="top"
                       title={language.t("command.model.choose")}
                       keybind={command.keybind("model.choose")}
                     >
-                      <Button as="div" variant="ghost" onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}>
+                      <ModelSelectorPopover triggerAs={Button} triggerProps={{ variant: "ghost", class: "min-h-[32px] sm:min-h-0" }}>
                         <Show when={local.model.current()?.provider?.id}>
                           <ProviderIcon id={local.model.current()!.provider.id as IconName} class="size-4 shrink-0" />
                         </Show>
-                        {local.model.current()?.name ?? language.t("dialog.model.select.title")}
-                        <Icon name="chevron-down" size="small" />
+                        <span class="whitespace-nowrap">{local.model.current()?.name ?? language.t("dialog.model.select.title")}</span>
+                        <Icon name="chevron-down" size="small" class="shrink-0" />
+                      </ModelSelectorPopover>
+                    </TooltipKeybind>
+                  </Show>
+
+                  <Show when={local.model.variant.list().length > 0}>
+                    <TooltipKeybind
+                      placement="top"
+                      title={language.t("command.model.variant.cycle")}
+                      keybind={command.keybind("model.variant.cycle")}
+                    >
+                      <Button
+                        variant="ghost"
+                        class="text-text-base _hidden group-hover/prompt-input:inline-block capitalize text-12-regular min-h-[32px] sm:min-h-0"
+                        onClick={() => local.model.variant.cycle()}
+                      >
+                        {local.model.variant.current() ?? language.t("common.default")}
                       </Button>
                     </TooltipKeybind>
-                  }
-                >
-                  <TooltipKeybind
-                    placement="top"
-                    title={language.t("command.model.choose")}
-                    keybind={command.keybind("model.choose")}
-                  >
-                    <ModelSelectorPopover triggerAs={Button} triggerProps={{ variant: "ghost" }}>
-                      <Show when={local.model.current()?.provider?.id}>
-                        <ProviderIcon id={local.model.current()!.provider.id as IconName} class="size-4 shrink-0" />
-                      </Show>
-                      {local.model.current()?.name ?? language.t("dialog.model.select.title")}
-                      <Icon name="chevron-down" size="small" />
-                    </ModelSelectorPopover>
-                  </TooltipKeybind>
-                </Show>
-                <Show when={local.model.variant.list().length > 0}>
-                  <TooltipKeybind
-                    placement="top"
-                    title={language.t("command.model.variant.cycle")}
-                    keybind={command.keybind("model.variant.cycle")}
-                  >
-                    <Button
-                      data-action="model-variant-cycle"
-                      variant="ghost"
-                      class="text-text-base _hidden group-hover/prompt-input:inline-block capitalize text-12-regular"
-                      onClick={() => local.model.variant.cycle()}
+                  </Show>
+
+                  <Show when={permission.permissionsEnabled() && params.id}>
+                    <TooltipKeybind
+                      placement="top"
+                      title={language.t("command.permissions.autoaccept.enable")}
+                      keybind={command.keybind("permissions.autoaccept")}
                     >
-                      {local.model.variant.current() ?? language.t("common.default")}
-                    </Button>
-                  </TooltipKeybind>
-                </Show>
-                <Show when={permission.permissionsEnabled() && params.id}>
-                  <TooltipKeybind
-                    placement="top"
-                    title={language.t("command.permissions.autoaccept.enable")}
-                    keybind={command.keybind("permissions.autoaccept")}
-                  >
-                    <Button
-                      variant="ghost"
-                      onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
-                      classList={{
-                        "_hidden group-hover/prompt-input:flex size-6 items-center justify-center": true,
-                        "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
-                        "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
-                      }}
-                      aria-label={
-                        permission.isAutoAccepting(params.id!, sdk.directory)
-                          ? language.t("command.permissions.autoaccept.disable")
-                          : language.t("command.permissions.autoaccept.enable")
-                      }
-                      aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
-                    >
-                      <Icon
-                        name="chevron-double-right"
-                        size="small"
-                        classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
-                      />
-                    </Button>
-                  </TooltipKeybind>
-                </Show>
+                      <Button
+                        variant="ghost"
+                        onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
+                        classList={{
+                          "_hidden group-hover/prompt-input:flex size-8 sm:size-6 items-center justify-center": true,
+                          "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
+                          "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
+                        }}
+                        aria-label={
+                          permission.isAutoAccepting(params.id!, sdk.directory)
+                            ? language.t("command.permissions.autoaccept.disable")
+                            : language.t("command.permissions.autoaccept.enable")
+                        }
+                        aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
+                      >
+                        <Icon
+                          name="chevron-double-right"
+                          size="small"
+                          classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
+                        />
+                      </Button>
+                    </TooltipKeybind>
+                  </Show>
+                </div>
               </Match>
             </Switch>
           </div>
-          <div class="flex items-center gap-3 absolute right-3 bottom-3">
+
+          {/* Action Row: Tools & Send button with visual grouping */}
+          <div class="flex items-center justify-between sm:justify-end gap-3">
             <input
               ref={fileInputRef}
               type="file"
@@ -2050,108 +2062,120 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 e.currentTarget.value = ""
               }}
             />
-            <div class="flex items-center gap-2">
+
+            {/* Left side tools group with subtle background on mobile */}
+            <div class="flex items-center gap-2 sm:gap-2 px-2 py-1 sm:px-0 sm:py-0 rounded-lg sm:rounded-none bg-surface-base/30 sm:bg-transparent">
               <SessionContextUsage />
+
               <Show when={store.mode === "normal"}>
                 <Tooltip placement="top" value={language.t("prompt.action.attachFile")}>
                   <Button
                     type="button"
                     variant="ghost"
-                    class="size-6"
+                    class="size-8 sm:size-6 shrink-0"
                     onClick={() => fileInputRef.click()}
                     aria-label={language.t("prompt.action.attachFile")}
                   >
-                    <Icon name="photo" class="size-4.5" />
+                    <Icon name="photo" class="size-5 sm:size-4.5" />
                   </Button>
                 </Tooltip>
               </Show>
+
               <Show when={isVoiceModeAvailable()}>
-                {/* Connection status indicator - matches Status popover design */}
-                <div class="flex items-center gap-1.5 px-2 py-1">
-                  <div
-                    classList={{
-                      "size-1.5 rounded-full": true,
-                      "bg-icon-success-base": voiceMode.status() === "connected",
-                      "bg-icon-warning-base animate-pulse": voiceMode.status() === "connecting",
-                      "bg-icon-critical-base": voiceMode.status() === "error",
-                      "bg-border-weak-base": voiceMode.status() === "disconnected",
-                    }}
-                  />
-                  <span class="text-12-regular text-text-strong">
-                    {voiceMode.status() === "connected"
-                      ? "Live"
-                      : voiceMode.status() === "connecting"
-                        ? "Connecting"
-                        : voiceMode.status() === "error"
-                          ? "Error"
-                          : "Offline"}
-                  </span>
-                </div>
-                {/* Start/Stop call button */}
-                <Show
-                  when={voiceMode.status() === "connected" || voiceMode.status() === "connecting"}
-                  fallback={
-                    <Tooltip placement="top" value="Start Realtime Session">
+                {/* Voice controls grouped with subtle divider */}
+                <div class="h-5 w-px bg-border-base/50 mx-1 hidden sm:block" />
+
+                <div class="flex items-center gap-2">
+                  {/* Connection status indicator - more prominent on mobile */}
+                  <div class="flex items-center gap-1.5 px-1.5 py-0.5 rounded-md bg-surface-base/50 sm:bg-transparent sm:px-2 sm:py-1">
+                    <div
+                      classList={{
+                        "size-2 sm:size-1.5 rounded-full transition-all": true,
+                        "bg-icon-success-base shadow-[0_0_4px_rgba(34,197,94,0.5)]": voiceMode.status() === "connected",
+                        "bg-icon-warning-base animate-pulse": voiceMode.status() === "connecting",
+                        "bg-icon-critical-base": voiceMode.status() === "error",
+                        "bg-border-weak-base": voiceMode.status() === "disconnected",
+                      }}
+                    />
+                    <span class="text-12-medium sm:text-12-regular text-text-strong hidden sm:inline">
+                      {voiceMode.status() === "connected"
+                        ? "Live"
+                        : voiceMode.status() === "connecting"
+                          ? "Connecting"
+                          : voiceMode.status() === "error"
+                            ? "Error"
+                            : "Offline"}
+                    </span>
+                  </div>
+
+                  {/* Start/Stop call button - more prominent on mobile */}
+                  <Show
+                    when={voiceMode.status() === "connected" || voiceMode.status() === "connecting"}
+                    fallback={
+                      <Tooltip placement="top" value="Start Realtime Session">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          class="size-8 sm:size-6 shrink-0 text-green-500 hover:text-green-400 hover:bg-green-500/20 transition-all"
+                          onClick={() => startVoiceSession()}
+                          aria-label="Start Realtime Session"
+                        >
+                          <Icon name="phone" class="size-5 sm:size-4.5" />
+                        </Button>
+                      </Tooltip>
+                    }
+                  >
+                    <Tooltip placement="top" value="End Realtime Session">
                       <Button
                         type="button"
                         variant="ghost"
-                        class="size-6 text-green-500 hover:text-green-400 hover:bg-green-500/20"
-                        onClick={() => startVoiceSession()}
-                        aria-label="Start Realtime Session"
+                        class="size-8 sm:size-6 shrink-0 text-red-500 hover:text-red-400 hover:bg-red-500/20 transition-all"
+                        onClick={() => voiceMode.disconnect()}
+                        aria-label="End Realtime Session"
                       >
-                        <Icon name="phone" class="size-4.5" />
+                        <Icon name="phone-x-mark" class="size-5 sm:size-4.5" />
                       </Button>
                     </Tooltip>
-                  }
-                >
-                  <Tooltip placement="top" value="End Realtime Session">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      class="size-6 text-red-500 hover:text-red-400 hover:bg-red-500/20"
-                      onClick={() => voiceMode.disconnect()}
-                      aria-label="End Realtime Session"
-                    >
-                      <Icon name="phone-x-mark" class="size-4.5" />
-                    </Button>
-                  </Tooltip>
-                </Show>
-                {/* Speaker button - toggle audio output (only when connected) */}
-                <Show when={voiceMode.status() === "connected"}>
-                  <Tooltip placement="top" value={voiceMode.speakerMuted() ? "Unmute speaker" : "Mute speaker"}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      class="size-6"
-                      classList={{
-                        "text-zinc-500": voiceMode.speakerMuted(),
-                        "text-green-500": !voiceMode.speakerMuted(),
-                      }}
-                      onClick={() => voiceMode.toggleSpeaker()}
-                      aria-label={voiceMode.speakerMuted() ? "Unmute speaker" : "Mute speaker"}
-                    >
-                      <Icon name={voiceMode.speakerMuted() ? "speaker-x-mark" : "speaker-wave"} class="size-4.5" />
-                    </Button>
-                  </Tooltip>
-                  {/* Microphone button - toggle audio input (only when connected) */}
-                  <Tooltip placement="top" value={voiceMode.micMuted() ? "Unmute microphone" : "Mute microphone"}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      class="size-6"
-                      classList={{
-                        "text-zinc-500": voiceMode.micMuted(),
-                        "text-red-500": !voiceMode.micMuted(),
-                      }}
-                      onClick={() => voiceMode.toggleMic()}
-                      aria-label={voiceMode.micMuted() ? "Unmute microphone" : "Mute microphone"}
-                    >
-                      <Icon name={voiceMode.micMuted() ? "microphone-slash" : "microphone"} class="size-4.5" />
-                    </Button>
-                  </Tooltip>
-                </Show>
+                  </Show>
+
+                  {/* Audio controls - only when connected, touch-friendly on mobile */}
+                  <Show when={voiceMode.status() === "connected"}>
+                    <Tooltip placement="top" value={voiceMode.speakerMuted() ? "Unmute speaker" : "Mute speaker"}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        class="size-8 sm:size-6 shrink-0 transition-all"
+                        classList={{
+                          "text-zinc-500 hover:text-zinc-400": voiceMode.speakerMuted(),
+                          "text-green-500 hover:text-green-400": !voiceMode.speakerMuted(),
+                        }}
+                        onClick={() => voiceMode.toggleSpeaker()}
+                        aria-label={voiceMode.speakerMuted() ? "Unmute speaker" : "Mute speaker"}
+                      >
+                        <Icon name={voiceMode.speakerMuted() ? "speaker-x-mark" : "speaker-wave"} class="size-5 sm:size-4.5" />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip placement="top" value={voiceMode.micMuted() ? "Unmute microphone" : "Mute microphone"}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        class="size-8 sm:size-6 shrink-0 transition-all"
+                        classList={{
+                          "text-zinc-500 hover:text-zinc-400": voiceMode.micMuted(),
+                          "text-red-500 hover:text-red-400": !voiceMode.micMuted(),
+                        }}
+                        onClick={() => voiceMode.toggleMic()}
+                        aria-label={voiceMode.micMuted() ? "Unmute microphone" : "Mute microphone"}
+                      >
+                        <Icon name={voiceMode.micMuted() ? "microphone-slash" : "microphone"} class="size-5 sm:size-4.5" />
+                      </Button>
+                    </Tooltip>
+                  </Show>
+                </div>
               </Show>
             </div>
+
+            {/* Send button - prominent on mobile */}
             <Tooltip
               placement="top"
               inactive={!prompt.dirty() && !working()}
@@ -2177,7 +2201,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 disabled={!prompt.dirty() && !working()}
                 icon={working() ? "stop" : "arrow-up"}
                 variant="primary"
-                class="h-6 w-4.5"
+                class="h-8 w-8 sm:h-6 sm:w-4.5 shrink-0"
                 aria-label={working() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
               />
             </Tooltip>
