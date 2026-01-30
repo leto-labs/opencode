@@ -39,6 +39,7 @@ bun run tauri android build
 ```
 
 Output:
+
 - **APK**: `src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk`
 - **AAB**: `src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab`
 
