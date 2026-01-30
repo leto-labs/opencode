@@ -149,6 +149,7 @@ function createGlobalSync() {
       fetch: platform.fetch,
       directory,
       throwOnError: true,
+      headers: globalSDK.authHeaders,
     })
     sdkCache.set(directory, sdk)
     return sdk

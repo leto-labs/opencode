@@ -21,7 +21,7 @@ OpenCode has a built-in `serve` command that starts a headless HTTP server. The 
 
 ```bash
 # Generate a strong password
-openssl rand -base64 32
+openssl rand -base64 32 | tr -dc 'A-Za-z0-9'
 
 # Set the server password (required for public exposure)
 export OPENCODE_SERVER_PASSWORD="your-strong-password"
