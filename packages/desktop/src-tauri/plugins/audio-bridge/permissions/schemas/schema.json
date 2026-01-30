@@ -343,6 +343,18 @@
           "markdownDescription": "Denies the startCapture command without any pre-configured scope."
         },
         {
+          "description": "Enables the startService command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-startService",
+          "markdownDescription": "Enables the startService command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the startService command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-startService",
+          "markdownDescription": "Denies the startService command without any pre-configured scope."
+        },
+        {
           "description": "Enables the stopCapture command without any pre-configured scope.",
           "type": "string",
           "const": "allow-stopCapture",
@@ -353,6 +365,18 @@
           "type": "string",
           "const": "deny-stopCapture",
           "markdownDescription": "Denies the stopCapture command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stopService command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stopService",
+          "markdownDescription": "Enables the stopService command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stopService command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stopService",
+          "markdownDescription": "Denies the stopService command without any pre-configured scope."
         }
       ]
     }

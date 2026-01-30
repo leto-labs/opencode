@@ -48,6 +48,7 @@ class AudioCaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "AudioCaptureService started")
         startForegroundWithNotification()
+        acquireWakeLock()
         return START_STICKY
     }
 
@@ -168,6 +169,7 @@ class AudioCaptureService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopCapture()
+        releaseWakeLock()
         Log.d(TAG, "AudioCaptureService destroyed")
     }
 }

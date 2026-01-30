@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: MIT
 
 const COMMANDS: &[&str] = &[
+    "startService",
+    "stopService",
     "startCapture",
     "stopCapture",
     "playAudio",

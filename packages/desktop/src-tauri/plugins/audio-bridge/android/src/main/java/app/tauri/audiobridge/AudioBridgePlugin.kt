@@ -129,6 +129,43 @@ class AudioBridgePlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @Command
+    fun startService(invoke: Invoke) {
+        try {
+            if (serviceBound && audioCaptureService != null) {
+                Log.d(TAG, "Foreground service already running")
+                invoke.resolve()
+                return
+            }
+            bindAndStartService()
+            // Service will start asynchronously; resolve immediately
+            // The foreground notification + wake lock activate in onStartCommand
+            Log.d(TAG, "Foreground service starting")
+            invoke.resolve()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start foreground service", e)
+            invoke.reject("Failed to start foreground service: ${e.message}")
+        }
+    }
+
+    @Command
+    fun stopService(invoke: Invoke) {
+        try {
+            if (serviceBound) {
+                activity.unbindService(serviceConnection)
+                serviceBound = false
+            }
+            val intent = Intent(activity, AudioCaptureService::class.java)
+            activity.stopService(intent)
+            audioCaptureService = null
+            Log.d(TAG, "Foreground service stopped")
+            invoke.resolve()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop foreground service", e)
+            invoke.reject("Failed to stop foreground service: ${e.message}")
+        }
+    }
+
+    @Command
     fun startCapture(invoke: Invoke) {
         val state = getPermissionState()
         if (state != "granted") {

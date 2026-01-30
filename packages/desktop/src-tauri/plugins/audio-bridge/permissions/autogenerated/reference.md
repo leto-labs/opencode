@@ -114,6 +114,32 @@ Denies the startCapture command without any pre-configured scope.
 <tr>
 <td>
 
+`audio-bridge:allow-startService`
+
+</td>
+<td>
+
+Enables the startService command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`audio-bridge:deny-startService`
+
+</td>
+<td>
+
+Denies the startService command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `audio-bridge:allow-stopCapture`
 
 </td>
@@ -133,6 +159,32 @@ Enables the stopCapture command without any pre-configured scope.
 <td>
 
 Denies the stopCapture command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`audio-bridge:allow-stopService`
+
+</td>
+<td>
+
+Enables the stopService command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`audio-bridge:deny-stopService`
+
+</td>
+<td>
+
+Denies the stopService command without any pre-configured scope.
 
 </td>
 </tr>

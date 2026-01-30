@@ -270,6 +270,12 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(PinchZoomDisablePlugin);
 
+    // Mobile-only plugins
+    #[cfg(mobile)]
+    {
+        builder = builder.plugin(tauri_plugin_audio_bridge::init());
+    }
+
     // Desktop-only plugins
     #[cfg(not(mobile))]
     {

@@ -1,123 +1,125 @@
-# Android Audio Bridge Implementation
+# Android Audio Bridge Plugin
 
-This document describes the Android implementation of the `audio-bridge` Tauri plugin for background voice input/output.
+The `audio-bridge` Tauri plugin provides an Android foreground service used to keep the WebView alive during background voice sessions.
 
-> **Status: Not Connected.** This plugin exists in the codebase but is **not initialized** -- `tauri_plugin_audio_bridge::init()` is never called in `lib.rs`. The current voice mode uses WebRTC in the WebView (see [VOICE_BACKGROUND_AUDIO.md](./VOICE_BACKGROUND_AUDIO.md)), which is architecturally separate from this native audio plugin. The plugin may be useful in the future for a server-side relay approach to background audio.
+> **Status: Active (foreground service only).** The plugin is initialized in `lib.rs` and the `startService`/`stopService` commands are called from the frontend when voice mode connects/disconnects. The native audio capture (`AudioRecorder`) and playback (`AudioPlayer`) code exists but is **dead code** -- not called by any active code path. Voice audio is handled entirely by WebRTC inside the WebView (see [VOICE_BACKGROUND_AUDIO.md](./VOICE_BACKGROUND_AUDIO.md)).
 
-## Overview
+## What It Does
 
-The audio-bridge plugin provides native audio capture and playback capabilities for Android, enabling:
-- Background microphone recording via Foreground Service
-- PCM16 audio capture at 16kHz (configurable)
-- Audio playback via AudioTrack
-- Proper Android permission handling
+When a voice session starts, the frontend invokes `plugin:audio-bridge|startService`. This starts an Android foreground service that:
 
-## Architecture
+1. Shows a persistent notification ("Voice Recording Active")
+2. Acquires a `PARTIAL_WAKE_LOCK` to prevent CPU sleep
+3. Declares `foregroundServiceType="microphone|mediaPlayback"` so Android treats the process as important
+
+The goal is to prevent Android from suspending the WebView (and killing the WebRTC connection) when the app is backgrounded or the screen is locked.
+
+When voice mode disconnects, `plugin:audio-bridge|stopService` stops the service, removes the notification, and releases the wake lock.
+
+## Integration Flow
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Frontend (TypeScript)                    │
-├─────────────────────────────────────────────────────────────┤
-│                        Tauri Bridge                          │
-├─────────────────────────────────────────────────────────────┤
-│                    Rust Plugin Layer                         │
-│              (lib.rs - platform registration)                │
-├─────────────────────────────────────────────────────────────┤
-│                   Kotlin Implementation                      │
-│  ┌─────────────────────┐  ┌─────────────────────────────┐  │
-│  │  AudioBridgePlugin  │──│    AudioCaptureService      │  │
-│  │  (main entry point) │  │  (Foreground Service)       │  │
-│  └─────────────────────┘  └─────────────────────────────┘  │
-│           │                           │                      │
-│           ▼                           ▼                      │
-│  ┌─────────────────┐         ┌─────────────────┐           │
-│  │   AudioPlayer   │         │  AudioRecorder  │           │
-│  │  (AudioTrack)   │         │  (AudioRecord)  │           │
-│  └─────────────────┘         └─────────────────┘           │
-└─────────────────────────────────────────────────────────────┘
+Voice mode connect() [use-realtime-connection.ts]
+  |-- WebRTC session established
+  |-- setStatus("connected")
+  '-- tauriInvoke("plugin:audio-bridge|startService")
+       '-- Android: AudioBridgePlugin.startService()
+            '-- bindAndStartService()
+                 '-- AudioCaptureService starts foreground
+                      |-- Notification shown
+                      '-- Wake lock acquired
+
+Voice mode disconnect() / cleanup()
+  |-- session.close()
+  '-- tauriInvoke("plugin:audio-bridge|stopService")
+       '-- Android: AudioBridgePlugin.stopService()
+            |-- unbindService()
+            '-- stopService()
+                 '-- AudioCaptureService destroyed
+                      |-- Notification removed
+                      '-- Wake lock released
 ```
 
 ## File Structure
 
 ```
 plugins/audio-bridge/
-├── Cargo.toml                 # Rust dependencies (iOS + Android)
-├── build.rs                   # Tauri plugin builder
-├── src/
-│   ├── lib.rs                 # Plugin registration (iOS + Android)
-│   ├── error.rs               # Error types
-│   └── models.rs              # Shared data models
-├── ios/                       # iOS implementation (Swift)
-│   └── Sources/
-│       └── AudioBridgePlugin.swift
-└── android/                   # Android implementation (Kotlin)
-    ├── build.gradle.kts       # Gradle build config
-    ├── settings.gradle
-    ├── proguard-rules.pro
-    └── src/main/
-        ├── AndroidManifest.xml
-        └── java/app/tauri/audiobridge/
-            ├── AudioBridgePlugin.kt    # Main plugin
-            ├── AudioCaptureService.kt  # Foreground service
-            ├── AudioRecorder.kt        # AudioRecord wrapper
-            └── AudioPlayer.kt          # AudioTrack wrapper
+|-- Cargo.toml                 # Rust dependencies (iOS + Android)
+|-- build.rs                   # Tauri plugin builder (registers commands)
+|-- src/
+|   |-- lib.rs                 # Plugin init, Rust API (start/stop service)
+|   |-- error.rs               # Error types
+|   '-- models.rs              # Shared data models
+|-- ios/                       # iOS implementation (Swift, not active)
+|   '-- Sources/
+|       '-- AudioBridgePlugin.swift
+'-- android/                   # Android implementation (Kotlin)
+    |-- build.gradle.kts
+    |-- settings.gradle
+    |-- proguard-rules.pro
+    '-- src/main/
+        |-- AndroidManifest.xml
+        '-- java/app/tauri/audiobridge/
+            |-- AudioBridgePlugin.kt    # Main plugin (startService/stopService)
+            |-- AudioCaptureService.kt  # Foreground service + notification + wake lock
+            |-- AudioRecorder.kt        # DEAD CODE - native mic capture
+            '-- AudioPlayer.kt          # DEAD CODE - native audio playback
 ```
 
-## API Contract
+## Commands
 
-### Commands
+### Active Commands
 
-| Command | Input | Output |
-|---------|-------|--------|
-| `checkPermissions` | - | `{ microphone: "granted" \| "denied" \| "prompt" }` |
-| `requestPermissions` | - | `{ microphone: "granted" \| "denied" \| "prompt" }` |
-| `startCapture` | `{ sampleRate?: 16000, channels?: 1 }` | - |
-| `stopCapture` | - | - |
-| `playAudio` | `{ data: number[], sampleRate: 16000, channels: 1 }` | - |
+| Command | Description |
+|---------|-------------|
+| `startService` | Start foreground service (notification + wake lock). No audio capture. |
+| `stopService` | Stop foreground service, release wake lock, remove notification. |
 
-### Events
-
-| Event | Payload |
-|-------|---------|
-| `audioData` | `{ data: number[], sampleRate: number, channels: number }` |
-| `playbackFinished` | `{}` |
-
-### Critical: Event Listener Registration
-
-**The frontend MUST register event listeners BEFORE calling `startCapture`.**
-
-The `trigger()` method only sends events to registered listeners. If no listener is registered, events are silently dropped.
+Frontend usage (from `packages/app/src/hooks/use-realtime-connection.ts`):
 
 ```typescript
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-
-// 1. Register listener FIRST
-const unlisten = await listen('plugin:audio-bridge:audioData', (event) => {
-  const { data, sampleRate, channels } = event.payload;
-  // Process PCM16 audio data
-});
-
-// 2. THEN start capture
-await invoke('plugin:audio-bridge|startCapture', { sampleRate: 16000, channels: 1 });
-
-// 3. When done, stop and unregister
-await invoke('plugin:audio-bridge|stopCapture');
-unlisten();
+// Uses __TAURI_INTERNALS__ directly to avoid adding @tauri-apps/api
+// as a dependency to the shared app package. No-op on web/desktop.
+tauriInvoke("plugin:audio-bridge|startService")
+tauriInvoke("plugin:audio-bridge|stopService")
 ```
 
-## Android-Specific Implementation Details
+### Dead Code Commands
 
-### Foreground Service Requirement
+These commands exist in the plugin but are **not called** from any frontend code:
 
-Android kills background audio processes without a Foreground Service. The `AudioCaptureService` class:
-- Starts as a foreground service with a persistent notification
-- Declares `foregroundServiceType="microphone|mediaPlayback"` for Android 14+
-- Uses a WakeLock to prevent CPU sleep during recording
+| Command | Description |
+|---------|-------------|
+| `startCapture` | Start native mic recording via AudioRecorder (would conflict with WebRTC) |
+| `stopCapture` | Stop native mic recording |
+| `playAudio` | Play PCM16 audio via AudioTrack |
+| `checkPermissions` | Check mic permission status |
+| `requestPermissions` | Request mic permission |
 
-### Permissions
+These may become useful if the architecture changes to a server-side relay approach (see [VOICE_BACKGROUND_AUDIO.md](./VOICE_BACKGROUND_AUDIO.md), Approach 3).
 
-The plugin declares these permissions in `AndroidManifest.xml`:
+## Plugin Initialization
+
+The plugin is initialized in `packages/desktop/src-tauri/src/lib.rs` for mobile builds only:
+
+```rust
+// Mobile-only plugins
+#[cfg(mobile)]
+{
+    builder = builder.plugin(tauri_plugin_audio_bridge::init());
+}
+```
+
+Capability permissions in `packages/desktop/src-tauri/capabilities/default.json`:
+
+```json
+"audio-bridge:allow-startService",
+"audio-bridge:allow-stopService"
+```
+
+## Android Permissions
+
+Declared in the plugin's `AndroidManifest.xml` and merged into the app manifest:
 
 ```xml
 <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -128,218 +130,87 @@ The plugin declares these permissions in `AndroidManifest.xml`:
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 ```
 
-The main app's `AndroidManifest.xml` must also include foreground service permissions.
+## Debugging
 
-### Audio Configuration
+### adb logcat (native Kotlin logs)
 
-**Recording (AudioRecorder.kt):**
-- Source: `MediaRecorder.AudioSource.MIC`
-- Format: `AudioFormat.ENCODING_PCM_16BIT`
-- Default: 16kHz, mono
-- Buffer: 4096 samples per callback
+The Kotlin code uses `Log.d()` with specific tags. Filter for them:
 
-**Playback (AudioPlayer.kt):**
-- Mode: `AudioTrack.MODE_STREAM`
-- Usage: `AudioAttributes.USAGE_VOICE_COMMUNICATION`
-- Content Type: `AudioAttributes.CONTENT_TYPE_SPEECH`
+```bash
+# Watch audio-bridge plugin logs
+adb logcat -s AudioBridgePlugin AudioCaptureService
 
-### Android Version Compatibility
+# Expected output when voice mode starts:
+# D AudioBridgePlugin: Foreground service starting
+# D AudioCaptureService: AudioCaptureService created
+# D AudioCaptureService: AudioCaptureService started
+# D AudioCaptureService: Foreground service started with notification
+# D AudioCaptureService: Wake lock acquired
+
+# Expected output when voice mode stops:
+# D AudioBridgePlugin: Foreground service stopped
+# D AudioCaptureService: AudioCaptureService destroyed
+# D AudioCaptureService: Wake lock released
+```
+
+### Chrome DevTools (JS console logs)
+
+Inspect the WebView's JavaScript console via Chrome:
+
+1. Connect phone via USB with USB debugging enabled
+2. Open `chrome://inspect` in Chrome on your computer
+3. The Tauri WebView should appear as an inspectable target
+4. Look for `[realtime]` prefixed logs:
+
+```
+[realtime] foreground service started        # startService succeeded
+[realtime] foreground service not available:  # plugin not registered (desktop/web)
+[realtime] foreground service stopped         # stopService succeeded
+```
+
+### Quick smoke test
+
+Start a voice session on the phone. If the foreground service starts, you'll see a persistent notification "Voice Recording Active" in the notification shade. That confirms the full chain (JS -> Tauri invoke -> Kotlin plugin -> foreground service) is working.
+
+### Verifying background behavior
+
+1. Start a voice session (notification should appear)
+2. Press the home button or lock the screen
+3. Check if the voice conversation continues (AI should still respond)
+4. Return to the app -- check if the session is still connected
+
+## Android Version Compatibility
 
 | Android Version | API Level | Notes |
 |-----------------|-----------|-------|
 | Android 8+ | 26+ | Requires `startForegroundService()` |
 | Android 10+ | 29+ | Requires `foregroundServiceType` in `startForeground()` |
-| Android 13+ | 33+ | Requires `POST_NOTIFICATIONS` permission |
+| Android 13+ | 33+ | Requires `POST_NOTIFICATIONS` runtime permission |
 | Android 14+ | 34+ | Must declare `foregroundServiceType` in both manifest AND `startForeground()` |
-
-### Plugin Lifecycle
-
-The plugin implements `onDestroy()` to properly clean up resources when the activity is destroyed:
-- Unbinds from the foreground service
-- Stops the foreground service
-- Releases the audio player
-
-This ensures no resource leaks when the app is closed.
 
 ## Known Limitations
 
-1. **OEM Battery Optimization**
-   - Samsung, Xiaomi, Huawei have aggressive battery killers
-   - May terminate foreground service despite proper implementation
-   - Users may need to manually whitelist the app in battery settings
+1. **WebView may still suspend** -- The foreground service keeps the process alive, but Android WebView may still pause its rendering surface or WebRTC internals when backgrounded. This is uncertain and device-dependent.
 
-2. **Audio Focus Not Implemented**
-   - Phone calls and other audio apps will interfere
-   - No automatic pause/resume on interruption
-   - Future enhancement: implement `AudioFocusRequest` handling
+2. **OEM battery optimization** -- Samsung, Xiaomi, Huawei have aggressive battery killers that may terminate foreground services despite proper implementation. Users may need to whitelist the app in battery settings.
 
-3. **Large JSON Payloads**
-   - 4096 samples at 16kHz = ~8KB JSON every ~256ms
-   - May cause performance issues on slower devices
-   - Consider base64 encoding or binary transfer for optimization
+3. **Wake lock timeout** -- The wake lock is acquired with a 10-minute timeout. Long voice sessions may need the lock re-acquired.
 
-4. **No Bluetooth Audio Routing**
-   - Audio session not configured for Bluetooth
-   - May not work with Bluetooth headsets for recording
+4. **No audio focus handling** -- Phone calls and other audio apps will interfere with the WebRTC session. No automatic pause/resume on interruption.
 
-## Rust Integration
+## Key Files
 
-### Cargo.toml
-
-```toml
-[package.metadata.platforms.support]
-android = { level = "full", notes = "" }
-ios = { level = "full", notes = "" }
-
-[build-dependencies]
-tauri-plugin = { version = "2", features = ["build"] }
-
-[target.'cfg(target_os = "android")'.dependencies]
-tauri = { version = "2", features = ["wry"] }
-```
-
-### build.rs
-
-```rust
-const COMMANDS: &[&str] = &[
-    "startCapture",
-    "stopCapture",
-    "playAudio",
-    "checkPermissions",
-    "requestPermissions",
-];
-
-fn main() {
-    tauri_plugin::Builder::new(COMMANDS)
-        .android_path("android")
-        .ios_path("ios")
-        .try_build();
-}
-```
-
-### lib.rs
-
-```rust
-#[cfg(target_os = "android")]
-const PLUGIN_IDENTIFIER: &str = "app.tauri.audiobridge";
-
-// In setup:
-#[cfg(target_os = "android")]
-let handle = api.register_android_plugin(PLUGIN_IDENTIFIER, "AudioBridgePlugin")?;
-```
-
-## Common Issues & Solutions
-
-### 1. `From<PluginInvokeError>` not implemented
-
-The `run_mobile_plugin` method returns `PluginInvokeError`. Add this to `error.rs`:
-
-```rust
-#[error("Plugin invoke error: {0}")]
-PluginInvoke(String),
-
-impl From<tauri::plugin::mobile::PluginInvokeError> for Error {
-    fn from(err: tauri::plugin::mobile::PluginInvokeError) -> Self {
-        Error::PluginInvoke(err.to_string())
-    }
-}
-```
-
-### 2. Kotlin `if` expression without else branch
-
-In Kotlin, when an `if` statement is the last expression in a lambda (like `.let {}`), it must have an else branch. Fix by adding `Unit` at the end:
-
-```kotlin
-someValue?.let { value ->
-    if (condition) {
-        doSomething()
-    }
-    Unit  // Explicit return type
-}
-```
-
-### 3. Service killed in background
-
-Ensure:
-- Foreground service is started before binding
-- WakeLock is acquired during recording
-- Notification channel is created (required for Android 8+)
-
-### 4. Plugin lifecycle methods
-
-The Tauri `Plugin` base class provides these lifecycle methods to override:
-- `load(webView: WebView)` - Called when plugin loads
-- `onDestroy()` - Called when activity is destroyed
-- `onPause()` / `onResume()` - Activity lifecycle
-- `onNewIntent(intent: Intent)` - New intent received
-
-**Note:** There is no `handleOnDestroy()` method - use `onDestroy()` instead.
-
-### 5. Events not received by frontend
-
-If `audioData` events are not reaching the frontend:
-1. Ensure listener is registered BEFORE calling `startCapture`
-2. Use correct event name: `plugin:audio-bridge:audioData`
-3. Check that `trigger()` is being called (add logging)
-
-## Testing
-
-### Build Verification
-
-```bash
-cd packages/desktop
-bun tauri android build --debug
-```
-
-### Manual Testing Checklist
-
-1. **Permission Flow:**
-   - Fresh install shows permission dialog
-   - Grant permission enables capture
-   - Deny permission returns error
-
-2. **Background Recording:**
-   - Start capture shows notification
-   - Recording continues when app is in background
-   - Recording continues when screen is locked
-   - Stop capture removes notification
-
-3. **Audio Quality:**
-   - `audioData` events contain valid PCM16 samples
-   - Sample rate matches configuration (16kHz default)
-   - Play recorded data back to verify quality
-
-### Device Matrix
-
-Test on:
-- Android 14 (API 34) - Pixel emulator
-- Android 12 (API 31) - Pixel emulator
-- Physical device - Android 13+
-
-## Implementation Status
-
-### Verified
-- [x] APK builds successfully
-- [x] Manifest merging includes permissions and service
-- [x] Plugin registration follows official patterns
-- [x] Permission handling uses Tauri's built-in system
-
-### Needs Device Testing
-- [ ] Foreground service starts correctly
-- [ ] Audio recording captures valid PCM16 data
-- [ ] Events reach frontend via `trigger()`
-- [ ] Background recording continues with screen off
-- [ ] `onDestroy()` cleanup works properly
-- [ ] Audio playback via `playAudio` command
-
-### Not Implemented
-- [ ] Audio focus handling (pause on phone calls)
-- [ ] Bluetooth audio routing
-- [ ] Binary/base64 audio transfer (performance optimization)
+| File | Purpose |
+|------|---------|
+| `packages/app/src/hooks/use-realtime-connection.ts` | Frontend: calls startService/stopService |
+| `packages/desktop/src-tauri/src/lib.rs` | Plugin initialization (`#[cfg(mobile)]`) |
+| `packages/desktop/src-tauri/capabilities/default.json` | Permission grants for startService/stopService |
+| `plugins/audio-bridge/src/lib.rs` | Rust plugin API |
+| `plugins/audio-bridge/android/.../AudioBridgePlugin.kt` | Kotlin: startService/stopService commands |
+| `plugins/audio-bridge/android/.../AudioCaptureService.kt` | Kotlin: foreground service + notification + wake lock |
 
 ## References
 
+- [VOICE_BACKGROUND_AUDIO.md](./VOICE_BACKGROUND_AUDIO.md) -- Background audio architecture and alternative approaches
 - [Tauri Plugin Development](https://v2.tauri.app/develop/plugins/)
 - [Android Foreground Services](https://developer.android.com/develop/background-work/services/foreground-services)
-- [AudioRecord API](https://developer.android.com/reference/android/media/AudioRecord)
-- [AudioTrack API](https://developer.android.com/reference/android/media/AudioTrack)

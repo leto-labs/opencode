@@ -6,6 +6,21 @@ import { toOpenAIAgentTools, type ServerToolDefinition } from "@/util/openai-rea
 
 export type RealtimeStatus = "disconnected" | "connecting" | "connected" | "error"
 
+// Tauri foreground service helpers (Android only, no-op elsewhere)
+// Uses __TAURI_INTERNALS__ to avoid adding @tauri-apps/api as a dependency to the shared app package
+const tauriInvoke = (cmd: string) => {
+  try {
+    const internals = (window as unknown as { __TAURI_INTERNALS__?: { invoke: (cmd: string) => Promise<unknown> } })
+      .__TAURI_INTERNALS__
+    if (internals?.invoke) {
+      return internals.invoke(cmd)
+    }
+  } catch {
+    // Not in Tauri environment
+  }
+  return Promise.resolve()
+}
+
 export interface RealtimeConnectionConfig {
   /** Output modalities for the session */
   outputModalities?: ("text" | "audio")[]
@@ -383,6 +398,11 @@ export function useRealtimeConnection(sessionID: Accessor<string | undefined>, c
 
       setStatus("connected")
       console.log("[realtime] successfully connected to session:", sid)
+
+      // Start Android foreground service to keep WebView alive when backgrounded
+      tauriInvoke("plugin:audio-bridge|startService")
+        .then(() => console.log("[realtime] foreground service started"))
+        .catch((err) => console.warn("[realtime] foreground service not available:", err))
     } catch (err) {
       console.error("[realtime] connection error", err)
       setError(err instanceof Error ? err.message : String(err))
@@ -408,6 +428,11 @@ export function useRealtimeConnection(sessionID: Accessor<string | undefined>, c
       audioElement = null
     }
     transport = null
+
+    // Stop Android foreground service
+    tauriInvoke("plugin:audio-bridge|stopService")
+      .then(() => console.log("[realtime] foreground service stopped"))
+      .catch((err) => console.warn("[realtime] foreground service stop failed:", err))
   }
 
   const toggle = () => {

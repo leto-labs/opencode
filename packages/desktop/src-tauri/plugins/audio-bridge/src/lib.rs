@@ -26,6 +26,21 @@ const PLUGIN_IDENTIFIER: &str = "app.tauri.audiobridge";
 pub struct AudioBridge<R: Runtime>(PluginHandle<R>);
 
 impl<R: Runtime> AudioBridge<R> {
+    /// Start the foreground service (notification + wake lock) without audio capture.
+    /// Used to keep the WebView alive during background voice sessions.
+    pub fn start_service(&self) -> Result<()> {
+        self.0
+            .run_mobile_plugin("startService", ())
+            .map_err(Into::into)
+    }
+
+    /// Stop the foreground service.
+    pub fn stop_service(&self) -> Result<()> {
+        self.0
+            .run_mobile_plugin("stopService", ())
+            .map_err(Into::into)
+    }
+
     /// Start capturing audio from microphone
     pub fn start_capture(&self, config: AudioConfig) -> Result<()> {
         self.0
