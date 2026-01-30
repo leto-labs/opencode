@@ -215,7 +215,7 @@ fn url_is_localhost(url: &reqwest::Url) -> bool {
     })
 }
 
-async fn check_server_health(url: &str, password: Option<&str>) -> bool {
+async fn check_server_health(url: &str, username: Option<&str>, password: Option<&str>) -> bool {
     let Ok(url) = reqwest::Url::parse(url) else {
         return false;
     };
@@ -239,7 +239,8 @@ async fn check_server_health(url: &str, password: Option<&str>) -> bool {
     let mut req = client.get(health_url);
 
     if let Some(password) = password {
-        req = req.basic_auth("opencode", Some(password));
+        let username = username.unwrap_or("opencode");
+        req = req.basic_auth(username, Some(password));
     }
 
     req.send()
@@ -470,14 +471,23 @@ async fn setup_server_connection(
     custom_url: Option<String>,
 ) -> Result<(Option<CommandChild>, ServerReadyData), String> {
     if let Some(url) = custom_url {
+        // Read Basic Auth credentials from environment variable
+        // Check compile-time first, then runtime
+        let username = option_env!("OPENCODE_SERVER_USERNAME")
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("OPENCODE_SERVER_USERNAME").ok());
+        let password = option_env!("OPENCODE_SERVER_PASSWORD")
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("OPENCODE_SERVER_PASSWORD").ok());
+
         loop {
-            if check_server_health(&url, None).await {
+            if check_server_health(&url, username.as_deref(), password.as_deref()).await {
                 println!("Connected to custom server: {}", url);
                 return Ok((
                     None,
                     ServerReadyData {
                         url: url.clone(),
-                        password: None,
+                        password: password.clone(),
                     },
                 ));
             }
@@ -540,24 +550,35 @@ async fn setup_server_connection(
             "http://localhost:4096".to_string()
         };
 
-        let dev_server_url = std::env::var("OPENCODE_DEV_SERVER_URL")
+        let server_url = option_env!("OPENCODE_SERVER_URL")
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("OPENCODE_SERVER_URL").ok())
             .unwrap_or(default_url);
 
-        // Try to connect to the dev server
-        if check_server_health(&dev_server_url, None).await {
-            println!("Connected to mobile dev server: {}", dev_server_url);
+        // Read Basic Auth credentials from environment variable
+        // Check compile-time first, then runtime
+        let username = option_env!("OPENCODE_SERVER_USERNAME")
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("OPENCODE_SERVER_USERNAME").ok());
+        let password = option_env!("OPENCODE_SERVER_PASSWORD")
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("OPENCODE_SERVER_PASSWORD").ok());
+
+        // Try to connect to the server with auth
+        if check_server_health(&server_url, username.as_deref(), password.as_deref()).await {
+            println!("Connected to mobile server: {}", server_url);
             return Ok((
                 None,
                 ServerReadyData {
-                    url: dev_server_url,
-                    password: None,
+                    url: server_url,
+                    password,
                 },
             ));
         }
 
         return Err(format!(
             "No server URL configured. Please configure a remote OpenCode server.\n\nAttempted to connect to: {}",
-            dev_server_url
+            server_url
         ));
     }
 
@@ -568,7 +589,7 @@ async fn setup_server_connection(
         let hostname = "127.0.0.1";
         let local_url = format!("http://{hostname}:{local_port}");
 
-        if !check_server_health(&local_url, None).await {
+        if !check_server_health(&local_url, None, None).await {
             let password = uuid::Uuid::new_v4().to_string();
 
             match spawn_local_server(app, hostname, local_port, &password).await {
@@ -613,7 +634,7 @@ async fn spawn_local_server(
 
         tokio::time::sleep(Duration::from_millis(10)).await;
 
-        if check_server_health(&url, Some(password)).await {
+        if check_server_health(&url, Some("opencode"), Some(password)).await {
             println!("Server ready after {:?}", timestamp.elapsed());
             break Ok(child);
         }
