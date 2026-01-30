@@ -1,480 +1,232 @@
-# Voice & Background Audio Research
+# Voice & Background Audio
 
-This document covers the research and implementation strategies for hands-free voice interaction with background audio support, similar to ChatGPT Voice.
+Status of voice mode on mobile and the challenge of background audio support.
 
-## Goal
+## Current Architecture (What Works)
 
-Enable a **hands-free voice experience** where users can:
-1. Start a voice session with the OpenCode agent
-2. Lock their phone or switch apps while the conversation continues
-3. Receive audio responses through speakers/headphones
-4. Provide voice input even when the app is backgrounded
-5. See lock screen controls (pause, end session)
-
-This is the **stretch goal** functionality due to significant platform complexity.
-
-## Reference: ChatGPT Voice Mode
-
-ChatGPT's voice mode achieves this by:
-1. Using VoIP-style audio sessions (priority audio routing)
-2. Running as a "call" from the OS perspective
-3. Displaying on lock screen with call controls
-4. Keeping microphone active in background
-5. Using push-to-talk or voice activity detection
-
-## Platform-Specific Analysis
-
-### iOS
-
-#### Audio Session Categories
-
-iOS provides `AVAudioSession` categories that determine audio behavior:
-
-| Category | Background Audio | Mic in Background | Use Case |
-|----------|-----------------|-------------------|----------|
-| `.playback` | Yes | No | Music apps |
-| `.record` | No | Yes | Voice memos |
-| `.playAndRecord` | Yes | Yes | VoIP, voice chat |
-| `.voiceChat` | Yes | Yes | Real-time voice |
-
-**Recommended**: `.playAndRecord` with `.voiceChat` mode
-
-```swift
-let session = AVAudioSession.sharedInstance()
-try session.setCategory(
-    .playAndRecord,
-    mode: .voiceChat,
-    options: [.allowBluetooth, .defaultToSpeaker, .mixWithOthers]
-)
-try session.setActive(true)
-```
-
-#### Background Modes Required
-
-In `Info.plist`:
-```xml
-<key>UIBackgroundModes</key>
-<array>
-    <string>audio</string>      <!-- Background audio playback -->
-    <string>voip</string>       <!-- VoIP for push-to-talk -->
-</array>
-```
-
-#### CallKit Integration (Phone-Call-Like Experience)
-
-For the most seamless experience, iOS apps can use **CallKit** to present voice sessions as calls:
-
-```swift
-import CallKit
-
-let provider = CXProvider(configuration: CXProviderConfiguration())
-provider.setDelegate(self, queue: nil)
-
-// Start a "call" (voice session)
-let update = CXCallUpdate()
-update.remoteHandle = CXHandle(type: .generic, value: "OpenCode Agent")
-update.hasVideo = false
-update.supportsDTMF = false
-update.supportsHolding = true
-
-provider.reportNewIncomingCall(with: uuid, update: update) { error in
-    // Handle error
-}
-```
-
-**CallKit Benefits:**
-- Lock screen call UI
-- Native call controls (mute, speaker, end)
-- Audio interruption handling
-- CarPlay integration
-- "Do Not Disturb" bypass (optional)
-
-**CallKit Limitations:**
-- App Store review scrutiny (must be legitimate VoIP use)
-- Cannot be used purely for AI conversations (gray area)
-- Requires real-time bidirectional audio
-
-#### Alternative: Now Playing + Remote Commands
-
-For a less intrusive approach, use **MPNowPlayingInfoCenter**:
-
-```swift
-import MediaPlayer
-
-// Set now playing info
-let nowPlayingInfo: [String: Any] = [
-    MPMediaItemPropertyTitle: "OpenCode Voice Session",
-    MPMediaItemPropertyArtist: "Talking to Agent",
-    MPNowPlayingInfoPropertyPlaybackRate: 1.0
-]
-MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-
-// Handle remote commands
-let commandCenter = MPRemoteCommandCenter.shared()
-commandCenter.pauseCommand.addTarget { event in
-    // Pause voice session
-    return .success
-}
-commandCenter.playCommand.addTarget { event in
-    // Resume voice session
-    return .success
-}
-```
-
-This provides:
-- Lock screen controls
-- Control Center widget
-- Headphone button handling
-- No App Store concerns
-
-#### iOS Background Execution Limits
-
-- **Background audio**: Unlimited while audio is playing
-- **VoIP**: Unlimited with active call
-- **Background fetch**: ~30 seconds, unreliable timing
-- **Background processing**: Limited to specific tasks
-
-**Key Insight**: As long as audio is actively playing/recording, iOS keeps the app alive.
-
-### Android
-
-#### Audio Focus
-
-Android uses an audio focus system to manage audio between apps:
-
-```kotlin
-val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-
-val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-    .setAudioAttributes(
-        AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .build()
-    )
-    .setAcceptsDelayedFocusGain(true)
-    .setOnAudioFocusChangeListener { focusChange ->
-        when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS -> pauseVoiceSession()
-            AudioManager.AUDIOFOCUS_GAIN -> resumeVoiceSession()
-        }
-    }
-    .build()
-
-audioManager.requestAudioFocus(focusRequest)
-```
-
-#### Foreground Service (Required for Background)
-
-Android **requires** a foreground service for background audio:
-
-```kotlin
-class VoiceSessionService : Service() {
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("OpenCode Voice Session")
-            .setContentText("Talking to agent...")
-            .setSmallIcon(R.drawable.ic_voice)
-            .addAction(R.drawable.ic_mute, "Mute", mutePendingIntent)
-            .addAction(R.drawable.ic_end, "End", endPendingIntent)
-            .setOngoing(true)
-            .build()
-
-        startForeground(NOTIFICATION_ID, notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-
-        return START_STICKY
-    }
-}
-```
-
-#### Manifest Permissions
-
-```xml
-<uses-permission android:name="android.permission.RECORD_AUDIO" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-<uses-permission android:name="android.permission.WAKE_LOCK" />
-
-<service
-    android:name=".VoiceSessionService"
-    android:foregroundServiceType="microphone|mediaPlayback"
-    android:exported="false" />
-```
-
-#### ConnectionService (Phone-Call-Like Experience)
-
-Android's equivalent to CallKit is **ConnectionService**:
-
-```kotlin
-class VoiceConnectionService : ConnectionService() {
-
-    override fun onCreateOutgoingConnection(
-        connectionManagerPhoneAccount: PhoneAccountHandle,
-        request: ConnectionRequest
-    ): Connection {
-        return VoiceConnection().apply {
-            setInitializing()
-            setActive()
-        }
-    }
-}
-
-class VoiceConnection : Connection() {
-    override fun onDisconnect() {
-        // End voice session
-        setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
-        destroy()
-    }
-
-    override fun onHold() {
-        // Pause voice session
-        setOnHold()
-    }
-
-    override fun onUnhold() {
-        // Resume voice session
-        setActive()
-    }
-}
-```
-
-**ConnectionService Benefits:**
-- Native dialer integration
-- Lock screen call UI
-- Bluetooth headset button support
-- Car Bluetooth integration
-
-**ConnectionService Limitations:**
-- Complex setup with PhoneAccount registration
-- May require CALL_PHONE permission (user concern)
-- Play Store policy considerations
-
-## Implementation Strategies
-
-### Strategy 1: Simple Background Audio (Recommended Start)
-
-**Complexity**: Low
-**Coverage**: 70% of use case
-
-1. Use `.playAndRecord` audio session (iOS) / foreground service (Android)
-2. Keep audio playing/recording to maintain background execution
-3. Use Now Playing / Media Notification for lock screen controls
-4. No "call" UI, but functional background voice
-
-**Pros:**
-- Simpler implementation
-- No App Store policy concerns
-- Works in Tauri with plugins
-
-**Cons:**
-- No native call UI
-- May be interrupted by real calls
-- Less seamless UX
-
-### Strategy 2: VoIP/Call Integration (Stretch Goal)
-
-**Complexity**: High
-**Coverage**: 95% of use case
-
-1. Use CallKit (iOS) / ConnectionService (Android)
-2. Present voice session as a "call"
-3. Full lock screen integration
-4. Native call controls
-
-**Pros:**
-- Best possible UX
-- True hands-free experience
-- Professional feel
-
-**Cons:**
-- Platform-specific native code required
-- App Store review scrutiny
-- May need to justify as "VoIP" use
-
-### Strategy 3: Hybrid Approach
-
-1. Start with Strategy 1 for MVP
-2. Add call integration later for power users
-3. Make it opt-in ("Call Mode" toggle)
-
-## Tauri Integration
-
-### Option A: Web APIs (Limited)
-
-The Web Audio API and MediaRecorder work in WebView, but:
-- No background execution
-- No lock screen integration
-- App must be in foreground
-
-### Option B: Tauri Plugin (Recommended)
-
-Create a custom Tauri plugin for voice handling:
-
-```rust
-// src-tauri/src/voice_plugin.rs
-use tauri::{plugin::Plugin, Runtime};
-
-pub struct VoicePlugin<R: Runtime> {
-    // Platform-specific voice session handle
-}
-
-impl<R: Runtime> Plugin<R> for VoicePlugin<R> {
-    fn name(&self) -> &'static str {
-        "voice"
-    }
-}
-
-#[tauri::command]
-async fn start_voice_session() -> Result<(), String> {
-    // Platform-specific implementation
-    #[cfg(target_os = "ios")]
-    ios::start_audio_session()?;
-
-    #[cfg(target_os = "android")]
-    android::start_foreground_service()?;
-
-    Ok(())
-}
-
-#[tauri::command]
-async fn stop_voice_session() -> Result<(), String> {
-    // Stop audio session
-}
-```
-
-### Option C: Native Swift/Kotlin Modules
-
-For CallKit/ConnectionService integration, write native modules:
-
-```
-packages/mobile/
-├── src-tauri/
-│   ├── gen/
-│   │   ├── apple/
-│   │   │   └── Sources/
-│   │   │       └── VoiceSession.swift  # CallKit integration
-│   │   └── android/
-│   │       └── app/src/main/kotlin/
-│   │           └── VoiceSessionService.kt  # ConnectionService
-```
-
-## Audio Streaming Architecture
+Voice mode uses the **OpenAI Realtime WebRTC** transport, running entirely inside the WebView:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Mobile Client                           │
 │                                                             │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    │
-│  │   Voice     │───▶│   WebSocket │───▶│   Audio     │    │
-│  │   Capture   │    │   Client    │◀───│   Playback  │    │
-│  └─────────────┘    └─────────────┘    └─────────────┘    │
-│        │                   │                  │            │
-│        │                   │                  │            │
-│        ▼                   │                  ▼            │
-│  ┌─────────────┐           │           ┌─────────────┐    │
-│  │ Audio Chunk │           │           │ Audio Chunk │    │
-│  │  Encoding   │           │           │  Decoding   │    │
-│  │  (Opus)     │           │           │  (Opus)     │    │
-│  └─────────────┘           │           └─────────────┘    │
-└────────────────────────────┼────────────────────────────────┘
-                             │
-                             │ WebSocket
-                             │ Binary frames (audio)
-                             │ JSON frames (control)
-                             │
-┌────────────────────────────┼────────────────────────────────┐
-│                            ▼                                │
-│                   OpenCode Server                           │
-│                                                             │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    │
-│  │   Speech    │───▶│   Agent     │───▶│   Text to   │    │
-│  │   to Text   │    │   Logic     │    │   Speech    │    │
-│  └─────────────┘    └─────────────┘    └─────────────┘    │
-│                                                             │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │                  Tauri WebView                        │  │
+│  │                                                       │  │
+│  │  ┌─────────────┐    ┌──────────────────────────────┐  │  │
+│  │  │ voice-mode  │───▶│  @openai/agents/realtime     │  │  │
+│  │  │  .tsx       │    │  OpenAIRealtimeWebRTC        │  │  │
+│  │  └─────────────┘    └──────────────────────────────┘  │  │
+│  │                              │                        │  │
+│  │                     WebRTC PeerConnection             │  │
+│  │                     (owns audio tracks)               │  │
+│  │                              │                        │  │
+│  │              ┌───────────────┼───────────────┐        │  │
+│  │              ▼               ▼               │        │  │
+│  │     getUserMedia()    <audio> element    SDK handles   │  │
+│  │     (mic capture)     (playback)        all audio     │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                              │                              │
+│                              │ WebRTC (direct to OpenAI)    │
+│                              ▼                              │
+│                    OpenAI Realtime API                       │
+└─────────────────────────────────────────────────────────────┘
+         │
+         │ HTTP/WebSocket (ephemeral key, tools, transcripts)
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   OpenCode Backend Server                    │
+│              (running on host, port 4096)                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Voice Activity Detection (VAD)
+### Key files
 
-For hands-free operation, implement VAD to detect when the user is speaking:
+| File | Purpose |
+|------|---------|
+| `packages/app/src/hooks/use-realtime-connection.ts` | WebRTC connection lifecycle, ephemeral key fetch, mic permission |
+| `packages/app/src/context/voice-mode.tsx` | Voice mode state, transcript storage, UI updates |
+| `packages/app/src/util/openai-realtime-tool.ts` | Tool definitions for the realtime agent |
 
-### Client-Side VAD (Recommended)
+### Connection flow
 
-```typescript
-// Using @ricky0123/vad-web or similar
-import { MicVAD } from "@ricky0123/vad-web"
+1. Frontend calls `sdk.client.session.clientSecret.create()` to get an ephemeral OpenAI key from the backend
+2. `navigator.mediaDevices.getUserMedia({ audio: true })` requests mic permission
+3. `OpenAIRealtimeWebRTC` creates a WebRTC peer connection directly to OpenAI
+4. The SDK manages mic capture, audio playback, VAD, and tool execution internally
+5. Transcripts are stored back to the OpenCode backend for history
 
-const vad = await MicVAD.new({
-  onSpeechStart: () => {
-    // User started speaking
-    startAudioCapture()
-  },
-  onSpeechEnd: (audio) => {
-    // User stopped speaking
-    sendAudioToServer(audio)
-  },
-  positiveSpeechThreshold: 0.8,
-  negativeSpeechThreshold: 0.3,
-})
+### What works today
+
+- Foreground voice conversations on both iOS and Android
+- Mic input via WebView's `getUserMedia`
+- Audio output via `<audio>` element
+- Tool execution (glob, grep) during voice sessions
+- Transcript persistence to backend
+
+## The Background Audio Problem
+
+When the user locks the phone or switches apps, **Android suspends the WebView**, which kills:
+- The WebRTC peer connection (disconnected)
+- The `getUserMedia` mic stream (stopped)
+- The `<audio>` element playback (paused)
+
+This is by design -- Android aggressively manages background processes to save battery.
+
+## Why the Audio Bridge Plugin Doesn't Help
+
+Commit d29602a added an Android native audio bridge plugin (`packages/desktop/src-tauri/plugins/audio-bridge/`) with:
+- `AudioCaptureService` (foreground service with notification)
+- `AudioRecorder` (native `AudioRecord` wrapper)
+- `AudioPlayer` (native `AudioTrack` wrapper)
+
+**However, this plugin cannot solve the background audio problem because:**
+
+1. **The plugin is not initialized** -- `tauri_plugin_audio_bridge::init()` is never called in `lib.rs`
+2. **Even if initialized, it's architecturally incompatible** -- The OpenAI Realtime SDK's `OpenAIRealtimeWebRTC` transport owns the WebRTC peer connection and its audio tracks. You cannot replace the WebRTC media streams with native audio I/O without modifying the SDK itself.
+3. **WebRTC requires the WebView** -- The peer connection, ICE candidates, DTLS, and SRTP all run inside the WebView's WebRTC stack. A native foreground service can keep the CPU awake, but it cannot keep a WebView's WebRTC connection alive.
+
+## Possible Approaches for Background Audio
+
+### Approach 1: Keep WebView Alive (Simplest)
+
+Prevent Android from suspending the WebView activity when backgrounded.
+
+**How:**
+- Start a foreground service with `FOREGROUND_SERVICE_MICROPHONE | FOREGROUND_SERVICE_MEDIA_PLAYBACK` when voice mode starts
+- Acquire a `PARTIAL_WAKE_LOCK` to prevent CPU sleep
+- The existing `AudioCaptureService` could be repurposed for this -- it already has the notification and wake lock
+
+**Pros:**
+- Minimal code changes -- just start the foreground service when voice mode begins
+- WebRTC connection stays alive (if Android honors the foreground service)
+- No SDK modifications needed
+
+**Cons:**
+- Android may still kill the WebView process under memory pressure
+- Higher battery usage (WebView stays active)
+- Some OEMs (Samsung, Xiaomi) aggressively kill foreground services anyway
+- Uncertain whether Android WebView actually preserves WebRTC when backgrounded even with a foreground service
+
+**Verdict:** Worth trying first as it requires the least work.
+
+### Approach 2: Native WebRTC (Most Robust, Most Work)
+
+Replace the WebView-based WebRTC with a native Kotlin/Swift WebRTC implementation.
+
+**How:**
+- Use Google's [WebRTC Android SDK](https://webrtc.org/native-code/android/) directly in Kotlin
+- Create a native `PeerConnection` that connects to OpenAI's Realtime API
+- Handle SDP offer/answer, ICE candidates, and audio tracks natively
+- Bridge audio events back to the frontend via Tauri plugin events
+
+**Pros:**
+- Full control over audio lifecycle
+- Survives backgrounding with foreground service
+- Best possible audio quality and latency
+- Works with lock screen controls
+
+**Cons:**
+- Significant implementation effort
+- Must reimplement the OpenAI Realtime protocol (SDP exchange, session management)
+- Platform-specific code for both iOS and Android
+- Must keep in sync with OpenAI API changes
+
+### Approach 3: Server-Side Relay (Architectural Change)
+
+Move the WebRTC connection to the OpenCode backend server, and use a simple audio stream between phone and server.
+
+**How:**
+- Backend establishes the WebRTC connection to OpenAI
+- Phone streams raw audio to backend via WebSocket
+- Backend relays OpenAI audio responses back to phone
+- Phone uses native audio APIs for capture/playback (the audio-bridge plugin)
+
+```
+Phone --[WebSocket audio]--> Backend --[WebRTC]--> OpenAI
+Phone <--[WebSocket audio]-- Backend <--[WebRTC]-- OpenAI
 ```
 
-### Server-Side VAD
+**Pros:**
+- Phone only needs native audio I/O (which the audio-bridge plugin already does)
+- Foreground service keeps native audio alive in background
+- Server-side WebRTC is well-supported in Node.js
 
-Alternatively, stream all audio to server and let it handle VAD:
-- Higher bandwidth usage
-- Lower latency for response
-- More accurate with better models
+**Cons:**
+- Added latency (phone -> server -> OpenAI)
+- Server must be reachable (not just localhost)
+- More complex server code
+- Double the bandwidth
 
-## Latency Considerations
+### Approach 4: Hybrid (Foreground WebRTC + Background Native)
 
-For a conversational experience, target these latencies:
+Use WebRTC in the foreground, switch to native audio when backgrounding.
 
-| Stage | Target | Notes |
-|-------|--------|-------|
-| Voice capture → Server | < 100ms | Use WebSocket, small chunks |
-| Speech-to-Text | < 500ms | Use streaming STT |
-| Agent processing | Variable | Depends on model |
-| Text-to-Speech | < 200ms | Use streaming TTS |
-| Audio playback start | < 50ms | Pre-buffer audio |
-| **Total round-trip** | < 1-2s | For natural conversation |
+**How:**
+- In foreground: normal WebRTC in WebView (current behavior)
+- On background: pause WebRTC, start native audio capture via foreground service
+- Buffer native audio, reconnect WebRTC when returning to foreground
+- Or relay buffered audio to server for processing
 
-## Recommended Implementation Order
+**Pros:**
+- Best of both worlds
+- Graceful degradation
 
-1. **MVP (No Background)**
-   - Voice capture in foreground
-   - Text-to-speech playback
-   - WebSocket streaming to server
-   - Works in basic Tauri WebView
+**Cons:**
+- Complex state management (switching between two audio systems)
+- Interruption in the voice session during transition
+- May not provide seamless background conversation
 
-2. **Background Audio (Strategy 1)**
-   - iOS: AVAudioSession with playAndRecord
-   - Android: Foreground service
-   - Now Playing / Media notification
-   - Lock screen controls
+## Recommended Path
 
-3. **Call Integration (Strategy 2 - Stretch)**
-   - iOS: CallKit integration
-   - Android: ConnectionService
-   - Full native call UI
-   - Bluetooth headset support
+1. **Try Approach 1 first** -- Start the existing `AudioCaptureService` foreground service (with notification and wake lock) when voice mode begins, even though we're not using its audio recording features. The foreground service status alone may prevent Android from suspending the WebView's WebRTC.
+
+2. **If that fails, consider Approach 3** -- The server-side relay is the most architecturally sound solution for true background audio. The audio-bridge plugin's native capture/playback would finally be useful in this scenario.
+
+3. **Approach 2 is a last resort** -- Only if you need pixel-perfect control and are willing to maintain a native WebRTC implementation per platform.
+
+## Platform-Specific Background Audio Details
+
+### Android
+
+**Required for any background audio:**
+- Foreground service with persistent notification
+- `FOREGROUND_SERVICE_MICROPHONE` and `FOREGROUND_SERVICE_MEDIA_PLAYBACK` permissions
+- `WAKE_LOCK` permission and `PARTIAL_WAKE_LOCK` acquisition
+- `POST_NOTIFICATIONS` runtime permission (Android 13+)
+
+**Already in place (from d29602a):**
+- Manifest permissions declared
+- `AudioCaptureService` foreground service class exists
+- Wake lock implementation exists
+- Notification channel and notification builder exist
+
+**Missing:**
+- Plugin not initialized in `lib.rs`
+- No frontend code to start/stop the foreground service
+- No integration between foreground service and WebRTC voice session
+
+### iOS
+
+**Required for background audio:**
+- `UIBackgroundModes: audio, voip` in Info.plist
+- `AVAudioSession` configured with `.playAndRecord` category
+- Active audio playback/recording to maintain background execution
+
+**Not yet implemented for iOS.**
+
+### Lock Screen Controls (Both Platforms)
+
+| Feature | iOS API | Android API | Status |
+|---------|---------|-------------|--------|
+| Media controls | `MPNowPlayingInfoCenter` | `MediaSession` | Not implemented |
+| Call-like UI | `CallKit` | `ConnectionService` | Not implemented (stretch) |
+| Notification actions | Rich notifications | Notification actions | Android: partially (foreground service notification exists) |
 
 ## References
 
-### iOS
-- [AVAudioSession Programming Guide](https://developer.apple.com/library/archive/documentation/Audio/Conceptual/AudioSessionProgrammingGuide/)
-- [CallKit Documentation](https://developer.apple.com/documentation/callkit)
-- [Background Execution](https://developer.apple.com/documentation/uikit/app_and_environment/scenes/preparing_your_ui_to_run_in_the_background)
-
-### Android
-- [Audio Focus](https://developer.android.com/guide/topics/media-apps/audio-focus)
-- [Foreground Services](https://developer.android.com/guide/components/foreground-services)
-- [ConnectionService](https://developer.android.com/reference/android/telecom/ConnectionService)
-
-### Voice AI
 - [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime)
-- [WebRTC for Voice](https://webrtc.org/)
-- [Opus Audio Codec](https://opus-codec.org/)
+- [OpenAI Agents SDK - Realtime](https://github.com/openai/openai-agents-js)
+- [Android Foreground Services](https://developer.android.com/develop/background-work/services/foreground-services)
+- [iOS Background Execution](https://developer.apple.com/documentation/uikit/app_and_environment/scenes/preparing_your_ui_to_run_in_the_background)
+- [WebRTC Android SDK](https://webrtc.org/native-code/android/)

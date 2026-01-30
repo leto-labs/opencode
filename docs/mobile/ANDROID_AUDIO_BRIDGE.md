@@ -2,6 +2,8 @@
 
 This document describes the Android implementation of the `audio-bridge` Tauri plugin for background voice input/output.
 
+> **Status: Not Connected.** This plugin exists in the codebase but is **not initialized** -- `tauri_plugin_audio_bridge::init()` is never called in `lib.rs`. The current voice mode uses WebRTC in the WebView (see [VOICE_BACKGROUND_AUDIO.md](./VOICE_BACKGROUND_AUDIO.md)), which is architecturally separate from this native audio plugin. The plugin may be useful in the future for a server-side relay approach to background audio.
+
 ## Overview
 
 The audio-bridge plugin provides native audio capture and playback capabilities for Android, enabling:
