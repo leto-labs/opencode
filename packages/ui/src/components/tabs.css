@@ -374,6 +374,7 @@
     }
 
     &[data-variant="settings"] {
+      /* Desktop defaults */
       [data-slot="tabs-list"] {
         width: 200px;
         min-width: 200px;
@@ -400,8 +401,6 @@
         height: 32px;
         border: none;
         border-radius: var(--radius-md);
-
-        /* text-14-medium */
         font-family: var(--font-family-sans);
         font-size: var(--font-size-base);
         font-weight: var(--font-weight-medium);
@@ -440,6 +439,41 @@
 
       [data-slot="tabs-content"] {
         background-color: var(--surface-raised-stronger-non-alpha);
+      }
+
+      /* Mobile overrides */
+      @media (max-width: 639px) {
+        flex-direction: column;
+
+        [data-slot="tabs-list"] {
+          width: 100%;
+          height: auto;
+          padding: 0;
+          border-right: none;
+          border-bottom: 1px solid var(--border-weak-base);
+        }
+
+        [data-slot="tabs-trigger-wrapper"] {
+          height: 48px;
+          min-width: 0;
+          flex: 1;
+
+          [data-slot="tabs-trigger"] {
+            padding: 0;
+            gap: 0;
+            justify-content: center;
+          }
+
+          [data-component="icon"] {
+            width: 20px;
+            height: 20px;
+          }
+        }
+
+        [data-slot="tabs-content"] {
+          flex: 1;
+          overflow-y: auto;
+        }
       }
     }
   }
