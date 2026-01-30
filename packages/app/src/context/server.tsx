@@ -7,10 +7,45 @@ import { Persist, persisted } from "@/utils/persist"
 
 type StoredProject = { worktree: string; expanded: boolean }
 
+/**
+ * Extract Basic-Auth credentials from a URL with embedded `user:pass@host`.
+ * Returns an `Authorization` header value, or `undefined` when there are no credentials.
+ */
+export function extractAuthHeaders(rawUrl: string): Record<string, string> | undefined {
+  try {
+    const parsed = new URL(/^https?:\/\//.test(rawUrl) ? rawUrl : `http://${rawUrl}`)
+    if (!parsed.username) return undefined
+    const token = btoa(`${decodeURIComponent(parsed.username)}:${decodeURIComponent(parsed.password)}`)
+    return { Authorization: `Basic ${token}` }
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Strip `user:password@` from a URL so the stored URL never contains credentials.
+ */
+function stripCredentials(rawUrl: string): string {
+  try {
+    const parsed = new URL(/^https?:\/\//.test(rawUrl) ? rawUrl : `http://${rawUrl}`)
+    parsed.username = ""
+    parsed.password = ""
+    return parsed.toString().replace(/\/+$/, "")
+  } catch {
+    return rawUrl
+  }
+}
+
 export function normalizeServerUrl(input: string) {
   const trimmed = input.trim()
   if (!trimmed) return
   const withProtocol = /^https?:\/\//.test(trimmed) ? trimmed : `http://${trimmed}`
+  // Only run through URL parser when credentials are present;
+  // otherwise keep the original simple-strip to avoid new URL()
+  // normalizing hostnames, ports, etc.
+  if (/@/.test(withProtocol.replace(/^https?:\/\//, ""))) {
+    return stripCredentials(withProtocol)
+  }
   return withProtocol.replace(/\/+$/, "")
 }
 
@@ -37,6 +72,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         list: [] as string[],
         projects: {} as Record<string, StoredProject[]>,
         lastProject: {} as Record<string, string>,
+        auth: {} as Record<string, { username: string; password: string }>,
       }),
     )
 
@@ -56,6 +92,19 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     function add(input: string) {
       const url = normalizeServerUrl(input)
       if (!url) return
+
+      // Persist credentials separately so the stored URL is always clean.
+      try {
+        const parsed = new URL(/^https?:\/\//.test(input) ? input : `http://${input}`)
+        if (parsed.username) {
+          setStore("auth", url, {
+            username: decodeURIComponent(parsed.username),
+            password: decodeURIComponent(parsed.password),
+          })
+        }
+      } catch {
+        // ignore parse errors
+      }
 
       const fallback = normalizeServerUrl(props.defaultUrl)
       if (fallback && url === fallback) {
@@ -80,8 +129,27 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
 
       batch(() => {
         setStore("list", list)
+        // Clean up stored credentials
+        if (store.auth[url]) {
+          const copy = { ...store.auth }
+          delete copy[url]
+          setStore("auth", copy)
+        }
         setState("active", next)
       })
+    }
+
+    /**
+     * Build an `Authorization` header from stored credentials for the given URL.
+     * Defaults to the active server when no URL is provided.
+     */
+    function getAuthHeaders(url?: string): Record<string, string> | undefined {
+      const target = url ?? state.active
+      if (!target) return undefined
+      const entry = store.auth[target]
+      if (!entry) return undefined
+      const token = btoa(`${entry.username}:${entry.password}`)
+      return { Authorization: `Basic ${token}` }
     }
 
     createEffect(() => {
@@ -100,6 +168,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         baseUrl: url,
         fetch: platform.fetch,
         signal,
+        headers: getAuthHeaders(url),
       })
       return sdk.global
         .health()
@@ -158,6 +227,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       setActive,
       add,
       remove,
+      getAuthHeaders,
       projects: {
         list: projectsList,
         open(directory: string) {

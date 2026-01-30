@@ -19,12 +19,17 @@ import { showToast } from "@opencode-ai/ui/toast"
 
 type ServerStatus = { healthy: boolean; version?: string }
 
-async function checkHealth(url: string, platform: ReturnType<typeof usePlatform>): Promise<ServerStatus> {
+async function checkHealth(
+  url: string,
+  platform: ReturnType<typeof usePlatform>,
+  headers?: Record<string, string>,
+): Promise<ServerStatus> {
   const signal = (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout?.(3000)
   const sdk = createOpencodeClient({
     baseUrl: url,
     fetch: platform.fetch,
     signal,
+    headers,
   })
   return sdk.global
     .health()
@@ -78,7 +83,7 @@ export function StatusPopover() {
     const results: Record<string, ServerStatus> = {}
     await Promise.all(
       servers().map(async (url) => {
-        results[url] = await checkHealth(url, platform)
+        results[url] = await checkHealth(url, platform, server.getAuthHeaders(url))
       }),
     )
     setStore("status", reconcile(results))

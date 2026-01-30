@@ -6,14 +6,13 @@ import { List } from "@opencode-ai/ui/list"
 import { Button } from "@opencode-ai/ui/button"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { TextField } from "@opencode-ai/ui/text-field"
-import { normalizeServerUrl, serverDisplayName, useServer } from "@/context/server"
+import { extractAuthHeaders, normalizeServerUrl, serverDisplayName, useServer } from "@/context/server"
 import { usePlatform } from "@/context/platform"
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
 import { useNavigate } from "@solidjs/router"
 import { useLanguage } from "@/context/language"
 import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
-import { useGlobalSDK } from "@/context/global-sdk"
 import { showToast } from "@opencode-ai/ui/toast"
 
 type ServerStatus = { healthy: boolean; version?: string }
@@ -40,12 +39,17 @@ interface EditRowProps {
   onBlur: () => void
 }
 
-async function checkHealth(url: string, platform: ReturnType<typeof usePlatform>): Promise<ServerStatus> {
+async function checkHealth(
+  url: string,
+  platform: ReturnType<typeof usePlatform>,
+  headers?: Record<string, string>,
+): Promise<ServerStatus> {
   const signal = (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout?.(3000)
   const sdk = createOpencodeClient({
     baseUrl: url,
     fetch: platform.fetch,
     signal,
+    headers,
   })
   return sdk.global
     .health()
@@ -128,7 +132,6 @@ export function DialogSelectServer() {
   const dialog = useDialog()
   const server = useServer()
   const platform = usePlatform()
-  const globalSDK = useGlobalSDK()
   const language = useLanguage()
   const [store, setStore] = createStore({
     status: {} as Record<string, ServerStatus | undefined>,
@@ -180,7 +183,7 @@ export function DialogSelectServer() {
     if (!looksComplete(value)) return
     const normalized = normalizeServerUrl(value)
     if (!normalized) return
-    const result = await checkHealth(normalized, platform)
+    const result = await checkHealth(normalized, platform, extractAuthHeaders(value))
     setStatus(result.healthy)
   }
 
@@ -245,7 +248,7 @@ export function DialogSelectServer() {
     const results: Record<string, ServerStatus> = {}
     await Promise.all(
       items().map(async (url) => {
-        results[url] = await checkHealth(url, platform)
+        results[url] = await checkHealth(url, platform, server.getAuthHeaders(url))
       }),
     )
     setStore("status", reconcile(results))
@@ -300,7 +303,8 @@ export function DialogSelectServer() {
 
     setStore("addServer", { adding: true, error: "" })
 
-    const result = await checkHealth(normalized, platform)
+    const headers = extractAuthHeaders(value) ?? server.getAuthHeaders(normalized)
+    const result = await checkHealth(normalized, platform, headers)
     setStore("addServer", { adding: false })
 
     if (!result.healthy) {
@@ -309,7 +313,8 @@ export function DialogSelectServer() {
     }
 
     resetAdd()
-    await select(normalized, true)
+    // Pass the raw value so server.add() can extract credentials before normalizing.
+    await select(value, true)
   }
 
   async function handleEdit(original: string, value: string) {
@@ -327,7 +332,8 @@ export function DialogSelectServer() {
 
     setStore("editServer", { busy: true, error: "" })
 
-    const result = await checkHealth(normalized, platform)
+    const headers = extractAuthHeaders(value) ?? server.getAuthHeaders(normalized)
+    const result = await checkHealth(normalized, platform, headers)
     setStore("editServer", { busy: false })
 
     if (!result.healthy) {
@@ -335,7 +341,7 @@ export function DialogSelectServer() {
       return
     }
 
-    replaceServer(original, normalized)
+    replaceServer(original, value)
 
     resetEdit()
   }
