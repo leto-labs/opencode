@@ -14,9 +14,10 @@ Get OpenCode running on iOS and Android simulators/emulators.
 
 ## Prerequisites
 
-- macOS 11+, Xcode 13+ (iOS), Android Studio (Android)
+- macOS 11+ or Linux, Xcode 13+ (iOS, macOS only), Android Studio (Android)
 - Rust: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 - Bun: `curl -fsSL https://bun.sh/install | bash`
+- **Linux only (for physical Android devices)**: `sudo apt install android-sdk-platform-tools-common` (installs udev rules for USB debugging)
 
 ---
 
@@ -61,16 +62,36 @@ cd packages/desktop
 bun run tauri android init
 ```
 
-**5. Run**:
-```bash
-# Terminal 1:
-cd packages/opencode && bun run --conditions=browser ./src/index.ts serve --port 4096
+**5. Connect a Device** (physical phone or emulator — one must be available before running `tauri android dev`):
 
-# Terminal 2:
+**Option A: Physical device (recommended)** — plug in via USB with USB debugging enabled:
+```bash
+# Enable USB debugging: Settings → Developer Options → USB Debugging
+# (Enable Developer Options first: Settings → About Phone → tap "Build Number" 7 times)
+adb devices                   # should show your device as "device"
+```
+
+**Option B: Emulator** — `tauri android dev` does **not** start an emulator automatically.
+```bash
+# Create emulator (if needed): Android Studio → Tools → Device Manager → Create Virtual Device
+
+# Option A: Start from Android Studio Device Manager (click play button)
+# Option B: Start from command line:
+emulator -list-avds           # list available emulators
+emulator -avd <AVD_NAME>      # start one (e.g. Medium_Phone_API_36)
+```
+
+**6. Run** (device/emulator must be available first):
+```bash
+# Terminal 1: Start the OpenCode backend server
+# For physical devices, use --hostname 0.0.0.0 so the phone can reach it over the network
+cd packages/opencode && bun run --conditions=browser ./src/index.ts serve --port 4096 --hostname 0.0.0.0
+
+# Terminal 2: Build and deploy to device
 cd packages/desktop && bun run tauri android dev
 ```
 
-**Create Emulator** (if needed): Use Android Studio → Tools → Device Manager
+> **Note:** For physical devices, Tauri sets `TAURI_DEV_HOST` to your machine's LAN IP at build time. The app uses this to connect to the backend server. For emulators, it falls back to `10.0.2.2`.
 
 ---
 
@@ -114,13 +135,27 @@ cd packages/desktop
 bun run tauri android init
 ```
 
-### Android (Every run)
+### Android (Every run — physical device)
 ```bash
-# Terminal 1: Start server
+# Terminal 1: Start server (--hostname 0.0.0.0 required for physical devices)
+cd packages/opencode
+bun run --conditions=browser ./src/index.ts serve --port 4096 --hostname 0.0.0.0
+
+# Terminal 2: Run Android app
+cd packages/desktop
+bun run tauri android dev
+```
+
+### Android (Every run — emulator)
+```bash
+# Terminal 1: Start emulator (must be running before tauri android dev)
+emulator -avd <AVD_NAME>
+
+# Terminal 2: Start server
 cd packages/opencode
 bun run --conditions=browser ./src/index.ts serve --port 4096
 
-# Terminal 2: Run Android app
+# Terminal 3: Run Android app
 cd packages/desktop
 bun run tauri android dev
 ```
@@ -129,7 +164,10 @@ bun run tauri android dev
 
 ## Key Implementation Details
 
-**Network**: iOS uses `localhost:4096`, Android uses `10.0.2.2:4096` (automatic)
+**Network (two connections)**:
+- **Port 1420** (Vite dev server): Serves the frontend UI. Tauri handles connectivity automatically (ADB forwarding for emulators, `TAURI_DEV_HOST` LAN IP for physical devices).
+- **Port 4096** (OpenCode backend): The actual API server. Physical Android devices connect via the host's LAN IP (detected from `TAURI_DEV_HOST` at build time). Emulators use `10.0.2.2` (Android's alias for host localhost). iOS uses `localhost:4096` directly.
+- **Physical devices require** `--hostname 0.0.0.0` on the server so it's reachable over the network.
 
 **File Pickers**: Native pickers disabled on mobile, uses server-based directory picker
 
@@ -147,9 +185,16 @@ bun run tauri android dev
 
 **iOS "xcodegen not found"**: `brew install xcodegen` (only if you get this error during init)
 
-**White screen**: Check terminal for Rust panics, verify server health: `curl http://localhost:4096/global/health`
+**White screen / unable to connect to localhost:1420**: The Vite dev server on port 1420 is not reachable from the emulator. Try:
+1. Clear stale ADB forwarding and restart: `adb reverse --remove-all` then re-run `bun run tauri android dev`
+2. Verify forwarding is active: `adb reverse --list` (should show `tcp:1420 tcp:1420`)
+3. Make sure the emulator was started **before** running `tauri android dev`
+
+**"No server URL configured" / can't reach backend**: The OpenCode server on port 4096 must be running on the host machine. For physical devices, ensure you started the server with `--hostname 0.0.0.0` and that the phone and computer are on the same Wi-Fi network. For emulators, the app connects via `10.0.2.2:4096`. Verify server is running: `curl http://localhost:4096/global/health`
 
 **iOS build fails**: Clean build with `rm -rf ~/Library/Developer/Xcode/DerivedData`
+
+**ADB "no permissions" on Linux**: Install udev rules: `sudo apt install android-sdk-platform-tools-common`, then unplug and replug the device
 
 **No Android emulators**: Create via Android Studio → Tools → Device Manager
 

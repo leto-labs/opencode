@@ -528,8 +528,13 @@ async fn setup_server_connection(
         // TODO: Implement proper mobile server discovery/configuration
         // Options: mDNS/Bonjour discovery, QR code scanning, or settings UI
         let default_url = if cfg!(target_os = "android") {
-            // Android emulator uses 10.0.2.2 to reach host machine's localhost
-            "http://10.0.2.2:4096".to_string()
+            // TAURI_DEV_HOST is set at compile time by Tauri for physical devices
+            // (contains the host machine's LAN IP). For emulators it's not set,
+            // so we fall back to 10.0.2.2 (Android emulator's alias for host localhost).
+            match option_env!("TAURI_DEV_HOST") {
+                Some(host) => format!("http://{}:4096", host),
+                None => "http://10.0.2.2:4096".to_string(),
+            }
         } else {
             // iOS simulator shares Mac's network stack, so localhost works
             "http://localhost:4096".to_string()
