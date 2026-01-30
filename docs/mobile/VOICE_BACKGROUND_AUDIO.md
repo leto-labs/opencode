@@ -42,11 +42,11 @@ Voice mode uses the **OpenAI Realtime WebRTC** transport, running entirely insid
 
 ### Key files
 
-| File | Purpose |
-|------|---------|
+| File                                                | Purpose                                                          |
+| --------------------------------------------------- | ---------------------------------------------------------------- |
 | `packages/app/src/hooks/use-realtime-connection.ts` | WebRTC connection lifecycle, ephemeral key fetch, mic permission |
-| `packages/app/src/context/voice-mode.tsx` | Voice mode state, transcript storage, UI updates |
-| `packages/app/src/util/openai-realtime-tool.ts` | Tool definitions for the realtime agent |
+| `packages/app/src/context/voice-mode.tsx`           | Voice mode state, transcript storage, UI updates                 |
+| `packages/app/src/util/openai-realtime-tool.ts`     | Tool definitions for the realtime agent                          |
 
 ### Connection flow
 
@@ -67,6 +67,7 @@ Voice mode uses the **OpenAI Realtime WebRTC** transport, running entirely insid
 ## The Background Audio Problem
 
 When the user locks the phone or switches apps, **Android suspends the WebView**, which kills:
+
 - The WebRTC peer connection (disconnected)
 - The `getUserMedia` mic stream (stopped)
 - The `<audio>` element playback (paused)
@@ -92,15 +93,18 @@ See [ANDROID_FOREGROUND_SERVICE.md](./ANDROID_FOREGROUND_SERVICE.md) for full de
 Prevent Android from suspending the WebView activity when backgrounded.
 
 **How:**
+
 - Start a foreground service with `FOREGROUND_SERVICE_MICROPHONE | FOREGROUND_SERVICE_MEDIA_PLAYBACK` when voice mode starts
 - Acquire a `PARTIAL_WAKE_LOCK` to prevent CPU sleep
 
 **Pros:**
+
 - Minimal code changes
 - WebRTC connection stays alive (if Android honors the foreground service)
 - No SDK modifications needed
 
 **Cons:**
+
 - Android may still kill the WebView process under memory pressure
 - Higher battery usage (WebView stays active)
 - Some OEMs (Samsung, Xiaomi) aggressively kill foreground services anyway
@@ -111,18 +115,21 @@ Prevent Android from suspending the WebView activity when backgrounded.
 Replace the WebView-based WebRTC with a native Kotlin/Swift WebRTC implementation.
 
 **How:**
+
 - Use Google's [WebRTC Android SDK](https://webrtc.org/native-code/android/) directly in Kotlin
 - Create a native `PeerConnection` that connects to OpenAI's Realtime API
 - Handle SDP offer/answer, ICE candidates, and audio tracks natively
 - Bridge audio events back to the frontend via Tauri plugin events
 
 **Pros:**
+
 - Full control over audio lifecycle
 - Survives backgrounding with foreground service
 - Best possible audio quality and latency
 - Works with lock screen controls
 
 **Cons:**
+
 - Significant implementation effort
 - Must reimplement the OpenAI Realtime protocol (SDP exchange, session management)
 - Platform-specific code for both iOS and Android
@@ -133,6 +140,7 @@ Replace the WebView-based WebRTC with a native Kotlin/Swift WebRTC implementatio
 Move the WebRTC connection to the OpenCode backend server, and use a simple audio stream between phone and server.
 
 **How:**
+
 - Backend establishes the WebRTC connection to OpenAI
 - Phone streams raw audio to backend via WebSocket
 - Backend relays OpenAI audio responses back to phone
@@ -144,11 +152,13 @@ Phone <--[WebSocket audio]-- Backend <--[WebRTC]-- OpenAI
 ```
 
 **Pros:**
+
 - Phone only needs native audio I/O
 - Foreground service keeps native audio alive in background
 - Server-side WebRTC is well-supported in Node.js
 
 **Cons:**
+
 - Added latency (phone -> server -> OpenAI)
 - Server must be reachable (not just localhost)
 - More complex server code
@@ -159,16 +169,19 @@ Phone <--[WebSocket audio]-- Backend <--[WebRTC]-- OpenAI
 Use WebRTC in the foreground, switch to native audio when backgrounding.
 
 **How:**
+
 - In foreground: normal WebRTC in WebView (current behavior)
 - On background: pause WebRTC, start native audio capture via foreground service
 - Buffer native audio, reconnect WebRTC when returning to foreground
 - Or relay buffered audio to server for processing
 
 **Pros:**
+
 - Best of both worlds
 - Graceful degradation
 
 **Cons:**
+
 - Complex state management (switching between two audio systems)
 - Interruption in the voice session during transition
 - May not provide seamless background conversation
@@ -186,18 +199,21 @@ Use WebRTC in the foreground, switch to native audio when backgrounding.
 ### Android
 
 **Required for any background audio:**
+
 - Foreground service with persistent notification
 - `FOREGROUND_SERVICE_MICROPHONE` and `FOREGROUND_SERVICE_MEDIA_PLAYBACK` permissions
 - `WAKE_LOCK` permission and `PARTIAL_WAKE_LOCK` acquisition
 - `POST_NOTIFICATIONS` runtime permission (Android 13+)
 
 **Already in place (from d29602a):**
+
 - Manifest permissions declared
 - `ForegroundService` class exists (in foreground-service plugin)
 - Wake lock implementation exists
 - Notification channel and notification builder exist
 
 **Missing:**
+
 - Plugin not initialized in `lib.rs`
 - No frontend code to start/stop the foreground service
 - No integration between foreground service and WebRTC voice session
@@ -205,6 +221,7 @@ Use WebRTC in the foreground, switch to native audio when backgrounding.
 ### iOS
 
 **Required for background audio:**
+
 - `UIBackgroundModes: audio, voip` in Info.plist
 - `AVAudioSession` configured with `.playAndRecord` category
 - Active audio playback/recording to maintain background execution
@@ -213,11 +230,11 @@ Use WebRTC in the foreground, switch to native audio when backgrounding.
 
 ### Lock Screen Controls (Both Platforms)
 
-| Feature | iOS API | Android API | Status |
-|---------|---------|-------------|--------|
-| Media controls | `MPNowPlayingInfoCenter` | `MediaSession` | Not implemented |
-| Call-like UI | `CallKit` | `ConnectionService` | Not implemented (stretch) |
-| Notification actions | Rich notifications | Notification actions | Android: partially (foreground service notification exists) |
+| Feature              | iOS API                  | Android API          | Status                                                      |
+| -------------------- | ------------------------ | -------------------- | ----------------------------------------------------------- |
+| Media controls       | `MPNowPlayingInfoCenter` | `MediaSession`       | Not implemented                                             |
+| Call-like UI         | `CallKit`                | `ConnectionService`  | Not implemented (stretch)                                   |
+| Notification actions | Rich notifications       | Notification actions | Android: partially (foreground service notification exists) |
 
 ## References
 

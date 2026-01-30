@@ -43,14 +43,14 @@ The mobile app provides the full OpenCode UI (text chat + voice mode) on phones 
 
 ## Key Differences from Desktop
 
-| Aspect | Desktop | Mobile |
-|--------|---------|--------|
-| Server | Local sidecar subprocess | Remote connection |
-| Input | Keyboard/Mouse + Voice | Touch + Voice |
-| Voice transport | WebRTC in WebView | WebRTC in WebView (same) |
-| Background voice | N/A | Not yet working |
-| File pickers | Native OS dialogs | Server-based directory picker |
-| Build | Single binary | Xcode (iOS) / Gradle (Android) |
+| Aspect           | Desktop                  | Mobile                         |
+| ---------------- | ------------------------ | ------------------------------ |
+| Server           | Local sidecar subprocess | Remote connection              |
+| Input            | Keyboard/Mouse + Voice   | Touch + Voice                  |
+| Voice transport  | WebRTC in WebView        | WebRTC in WebView (same)       |
+| Background voice | N/A                      | Not yet working                |
+| File pickers     | Native OS dialogs        | Server-based directory picker  |
+| Build            | Single binary            | Xcode (iOS) / Gradle (Android) |
 
 ## Getting Started
 
@@ -58,11 +58,11 @@ See [MOBILE_SETUP.md](../MOBILE_SETUP.md) for setup instructions (prerequisites,
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [MOBILE_SETUP.md](../MOBILE_SETUP.md) | Build and run instructions for iOS and Android |
-| [VOICE_BACKGROUND_AUDIO.md](./VOICE_BACKGROUND_AUDIO.md) | Voice architecture and background audio challenges |
+| Document                                                         | Description                                               |
+| ---------------------------------------------------------------- | --------------------------------------------------------- |
+| [MOBILE_SETUP.md](../MOBILE_SETUP.md)                            | Build and run instructions for iOS and Android            |
+| [VOICE_BACKGROUND_AUDIO.md](./VOICE_BACKGROUND_AUDIO.md)         | Voice architecture and background audio challenges        |
 | [ANDROID_FOREGROUND_SERVICE.md](./ANDROID_FOREGROUND_SERVICE.md) | Foreground service plugin (Android Kotlin implementation) |
-| [ANDROID_TESTING.md](./ANDROID_TESTING.md) | Testing on physical Android devices |
-| [PLATFORM_CAPABILITIES.md](./PLATFORM_CAPABILITIES.md) | iOS vs Android capability comparison |
-| [TAURI_MOBILE.md](./TAURI_MOBILE.md) | Tauri v2 mobile configuration details |
+| [ANDROID_TESTING.md](./ANDROID_TESTING.md)                       | Testing on physical Android devices                       |
+| [PLATFORM_CAPABILITIES.md](./PLATFORM_CAPABILITIES.md)           | iOS vs Android capability comparison                      |
+| [TAURI_MOBILE.md](./TAURI_MOBILE.md)                             | Tauri v2 mobile configuration details                     |
