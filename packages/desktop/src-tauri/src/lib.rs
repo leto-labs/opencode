@@ -273,7 +273,7 @@ pub fn run() {
     // Mobile-only plugins
     #[cfg(mobile)]
     {
-        builder = builder.plugin(tauri_plugin_audio_bridge::init());
+        builder = builder.plugin(tauri_plugin_foreground_service::init());
     }
 
     // Desktop-only plugins

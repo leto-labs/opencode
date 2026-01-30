@@ -29,7 +29,7 @@ The mobile app provides the full OpenCode UI (text chat + voice mode) on phones 
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │           Rust + Native Plugins                      │   │
 │  │  • Server discovery (TAURI_DEV_HOST / 10.0.2.2)     │   │
-│  │  • Audio bridge (Kotlin/Swift, not yet connected)    │   │
+│  │  • Foreground service (Kotlin/Swift)                  │   │
 │  └─────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
                           │
@@ -62,7 +62,7 @@ See [MOBILE_SETUP.md](../MOBILE_SETUP.md) for setup instructions (prerequisites,
 |----------|-------------|
 | [MOBILE_SETUP.md](../MOBILE_SETUP.md) | Build and run instructions for iOS and Android |
 | [VOICE_BACKGROUND_AUDIO.md](./VOICE_BACKGROUND_AUDIO.md) | Voice architecture and background audio challenges |
-| [ANDROID_AUDIO_BRIDGE.md](./ANDROID_AUDIO_BRIDGE.md) | Native audio bridge plugin (Android Kotlin implementation) |
+| [ANDROID_FOREGROUND_SERVICE.md](./ANDROID_FOREGROUND_SERVICE.md) | Foreground service plugin (Android Kotlin implementation) |
 | [ANDROID_TESTING.md](./ANDROID_TESTING.md) | Testing on physical Android devices |
 | [PLATFORM_CAPABILITIES.md](./PLATFORM_CAPABILITIES.md) | iOS vs Android capability comparison |
 | [TAURI_MOBILE.md](./TAURI_MOBILE.md) | Tauri v2 mobile configuration details |

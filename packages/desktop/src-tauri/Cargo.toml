@@ -44,7 +44,7 @@ tauri-plugin-decorum = "1.1.1"
 comrak = { version = "0.50", default-features = false }
 
 [target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
-tauri-plugin-audio-bridge = { path = "plugins/audio-bridge" }
+tauri-plugin-foreground-service = { path = "plugins/foreground-service" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18.2"

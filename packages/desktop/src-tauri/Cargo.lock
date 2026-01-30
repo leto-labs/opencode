@@ -3036,10 +3036,10 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
- "tauri-plugin-audio-bridge",
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-decorum",
  "tauri-plugin-dialog",
+ "tauri-plugin-foreground-service",
  "tauri-plugin-http",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
@@ -4787,19 +4787,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-audio-bridge"
-version = "0.1.0"
-dependencies = [
- "log",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin",
- "thiserror 2.0.17",
-]
-
-[[package]]
 name = "tauri-plugin-clipboard-manager"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4847,6 +4834,19 @@ dependencies = [
  "tauri-plugin-fs",
  "thiserror 2.0.17",
  "url",
+]
+
+[[package]]
+name = "tauri-plugin-foreground-service"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin",
+ "thiserror 2.0.17",
 ]
 
 [[package]]

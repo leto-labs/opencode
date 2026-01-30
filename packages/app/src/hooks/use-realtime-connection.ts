@@ -400,7 +400,7 @@ export function useRealtimeConnection(sessionID: Accessor<string | undefined>, c
       console.log("[realtime] successfully connected to session:", sid)
 
       // Start Android foreground service to keep WebView alive when backgrounded
-      tauriInvoke("plugin:audio-bridge|startService")
+      tauriInvoke("plugin:foreground-service|startService")
         .then(() => console.log("[realtime] foreground service started"))
         .catch((err) => console.warn("[realtime] foreground service not available:", err))
     } catch (err) {
@@ -430,7 +430,7 @@ export function useRealtimeConnection(sessionID: Accessor<string | undefined>, c
     transport = null
 
     // Stop Android foreground service
-    tauriInvoke("plugin:audio-bridge|stopService")
+    tauriInvoke("plugin:foreground-service|stopService")
       .then(() => console.log("[realtime] foreground service stopped"))
       .catch((err) => console.warn("[realtime] foreground service stop failed:", err))
   }

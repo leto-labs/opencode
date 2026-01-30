@@ -73,32 +73,30 @@ When the user locks the phone or switches apps, **Android suspends the WebView**
 
 This is by design -- Android aggressively manages background processes to save battery.
 
-## Why the Audio Bridge Plugin Doesn't Help
+## Current Approach: Foreground Service (Approach 1)
 
-Commit d29602a added an Android native audio bridge plugin (`packages/desktop/src-tauri/plugins/audio-bridge/`) with:
-- `AudioCaptureService` (foreground service with notification)
-- `AudioRecorder` (native `AudioRecord` wrapper)
-- `AudioPlayer` (native `AudioTrack` wrapper)
+The `foreground-service` Tauri plugin (`packages/desktop/src-tauri/plugins/foreground-service/`) implements Approach 1 below. When voice mode connects, the frontend starts an Android foreground service that:
 
-**However, this plugin cannot solve the background audio problem because:**
+- Shows a persistent notification ("Voice Session Active")
+- Acquires a `PARTIAL_WAKE_LOCK` (no timeout) to prevent CPU sleep
+- Declares `foregroundServiceType="microphone|mediaPlayback"`
 
-1. **The plugin is not initialized** -- `tauri_plugin_audio_bridge::init()` is never called in `lib.rs`
-2. **Even if initialized, it's architecturally incompatible** -- The OpenAI Realtime SDK's `OpenAIRealtimeWebRTC` transport owns the WebRTC peer connection and its audio tracks. You cannot replace the WebRTC media streams with native audio I/O without modifying the SDK itself.
-3. **WebRTC requires the WebView** -- The peer connection, ICE candidates, DTLS, and SRTP all run inside the WebView's WebRTC stack. A native foreground service can keep the CPU awake, but it cannot keep a WebView's WebRTC connection alive.
+See [ANDROID_FOREGROUND_SERVICE.md](./ANDROID_FOREGROUND_SERVICE.md) for full details.
 
-## Possible Approaches for Background Audio
+**Limitations:** The foreground service keeps the process alive, but Android WebView may still pause its rendering surface or WebRTC internals when backgrounded. This is device-dependent.
 
-### Approach 1: Keep WebView Alive (Simplest)
+## Alternative Approaches for Background Audio
+
+### Approach 1: Keep WebView Alive (Current -- Implemented)
 
 Prevent Android from suspending the WebView activity when backgrounded.
 
 **How:**
 - Start a foreground service with `FOREGROUND_SERVICE_MICROPHONE | FOREGROUND_SERVICE_MEDIA_PLAYBACK` when voice mode starts
 - Acquire a `PARTIAL_WAKE_LOCK` to prevent CPU sleep
-- The existing `AudioCaptureService` could be repurposed for this -- it already has the notification and wake lock
 
 **Pros:**
-- Minimal code changes -- just start the foreground service when voice mode begins
+- Minimal code changes
 - WebRTC connection stays alive (if Android honors the foreground service)
 - No SDK modifications needed
 
@@ -107,8 +105,6 @@ Prevent Android from suspending the WebView activity when backgrounded.
 - Higher battery usage (WebView stays active)
 - Some OEMs (Samsung, Xiaomi) aggressively kill foreground services anyway
 - Uncertain whether Android WebView actually preserves WebRTC when backgrounded even with a foreground service
-
-**Verdict:** Worth trying first as it requires the least work.
 
 ### Approach 2: Native WebRTC (Most Robust, Most Work)
 
@@ -140,7 +136,7 @@ Move the WebRTC connection to the OpenCode backend server, and use a simple audi
 - Backend establishes the WebRTC connection to OpenAI
 - Phone streams raw audio to backend via WebSocket
 - Backend relays OpenAI audio responses back to phone
-- Phone uses native audio APIs for capture/playback (the audio-bridge plugin)
+- Phone uses native audio APIs for capture/playback
 
 ```
 Phone --[WebSocket audio]--> Backend --[WebRTC]--> OpenAI
@@ -148,7 +144,7 @@ Phone <--[WebSocket audio]-- Backend <--[WebRTC]-- OpenAI
 ```
 
 **Pros:**
-- Phone only needs native audio I/O (which the audio-bridge plugin already does)
+- Phone only needs native audio I/O
 - Foreground service keeps native audio alive in background
 - Server-side WebRTC is well-supported in Node.js
 
@@ -179,9 +175,9 @@ Use WebRTC in the foreground, switch to native audio when backgrounding.
 
 ## Recommended Path
 
-1. **Try Approach 1 first** -- Start the existing `AudioCaptureService` foreground service (with notification and wake lock) when voice mode begins, even though we're not using its audio recording features. The foreground service status alone may prevent Android from suspending the WebView's WebRTC.
+1. **Approach 1 is implemented** -- The `foreground-service` plugin starts an Android foreground service with notification and wake lock when voice mode begins. See [ANDROID_FOREGROUND_SERVICE.md](./ANDROID_FOREGROUND_SERVICE.md).
 
-2. **If that fails, consider Approach 3** -- The server-side relay is the most architecturally sound solution for true background audio. The audio-bridge plugin's native capture/playback would finally be useful in this scenario.
+2. **If that proves insufficient, consider Approach 3** -- The server-side relay is the most architecturally sound solution for true background audio.
 
 3. **Approach 2 is a last resort** -- Only if you need pixel-perfect control and are willing to maintain a native WebRTC implementation per platform.
 
@@ -197,7 +193,7 @@ Use WebRTC in the foreground, switch to native audio when backgrounding.
 
 **Already in place (from d29602a):**
 - Manifest permissions declared
-- `AudioCaptureService` foreground service class exists
+- `ForegroundService` class exists (in foreground-service plugin)
 - Wake lock implementation exists
 - Notification channel and notification builder exist
 
