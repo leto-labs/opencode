@@ -78,8 +78,16 @@ export function AppBaseProviders(props: ParentProps) {
 
 function ServerKey(props: ParentProps) {
   const server = useServer()
+  // Key on URL + credentials so changing auth for the
+  // already-active server forces a full re-mount of GlobalSDK.
+  const key = () => {
+    const url = server.url
+    if (!url) return undefined
+    const auth = server.getAuthHeaders(url)
+    return auth ? `${url}:${auth.Authorization}` : url
+  }
   return (
-    <Show when={server.url} keyed>
+    <Show when={key()} keyed>
       {props.children}
     </Show>
   )
