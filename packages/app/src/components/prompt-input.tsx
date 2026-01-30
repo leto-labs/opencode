@@ -1939,8 +1939,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               <Match when={store.mode === "shell"}>
                 <div class="flex items-center gap-2 px-2 h-8 sm:h-6">
                   <Icon name="console" size="small" class="text-icon-primary shrink-0" />
-                  <span class="text-13-medium sm:text-12-regular text-text-primary whitespace-nowrap">{language.t("prompt.mode.shell")}</span>
-                  <span class="text-12-regular text-text-weak whitespace-nowrap hidden sm:inline">{language.t("prompt.mode.shell.exit")}</span>
+                  <span class="text-13-medium sm:text-12-regular text-text-primary whitespace-nowrap">
+                    {language.t("prompt.mode.shell")}
+                  </span>
+                  <span class="text-12-regular text-text-weak whitespace-nowrap hidden sm:inline">
+                    {language.t("prompt.mode.shell.exit")}
+                  </span>
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
@@ -1971,11 +1975,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         title={language.t("command.model.choose")}
                         keybind={command.keybind("model.choose")}
                       >
-                        <Button as="div" variant="ghost" class="min-h-[32px] sm:min-h-0" onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}>
+                        <Button
+                          as="div"
+                          variant="ghost"
+                          class="min-h-[32px] sm:min-h-0"
+                          onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
+                        >
                           <Show when={local.model.current()?.provider?.id}>
                             <ProviderIcon id={local.model.current()!.provider.id as IconName} class="size-4 shrink-0" />
                           </Show>
-                          <span class="whitespace-nowrap">{local.model.current()?.name ?? language.t("dialog.model.select.title")}</span>
+                          <span class="whitespace-nowrap">
+                            {local.model.current()?.name ?? language.t("dialog.model.select.title")}
+                          </span>
                           <Icon name="chevron-down" size="small" class="shrink-0" />
                         </Button>
                       </TooltipKeybind>
@@ -1986,11 +1997,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       title={language.t("command.model.choose")}
                       keybind={command.keybind("model.choose")}
                     >
-                      <ModelSelectorPopover triggerAs={Button} triggerProps={{ variant: "ghost", class: "min-h-[32px] sm:min-h-0" }}>
+                      <ModelSelectorPopover
+                        triggerAs={Button}
+                        triggerProps={{ variant: "ghost", class: "min-h-[32px] sm:min-h-0" }}
+                      >
                         <Show when={local.model.current()?.provider?.id}>
                           <ProviderIcon id={local.model.current()!.provider.id as IconName} class="size-4 shrink-0" />
                         </Show>
-                        <span class="whitespace-nowrap">{local.model.current()?.name ?? language.t("dialog.model.select.title")}</span>
+                        <span class="whitespace-nowrap">
+                          {local.model.current()?.name ?? language.t("dialog.model.select.title")}
+                        </span>
                         <Icon name="chevron-down" size="small" class="shrink-0" />
                       </ModelSelectorPopover>
                     </TooltipKeybind>
@@ -2036,7 +2052,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         <Icon
                           name="chevron-double-right"
                           size="small"
-                          classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
+                          classList={{
+                            "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
+                          }}
                         />
                       </Button>
                     </TooltipKeybind>
@@ -2149,7 +2167,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         onClick={() => voiceMode.toggleSpeaker()}
                         aria-label={voiceMode.speakerMuted() ? "Unmute speaker" : "Mute speaker"}
                       >
-                        <Icon name={voiceMode.speakerMuted() ? "speaker-x-mark" : "speaker-wave"} class="size-5 sm:size-4.5" />
+                        <Icon
+                          name={voiceMode.speakerMuted() ? "speaker-x-mark" : "speaker-wave"}
+                          class="size-5 sm:size-4.5"
+                        />
                       </Button>
                     </Tooltip>
                     <Tooltip placement="top" value={voiceMode.micMuted() ? "Unmute microphone" : "Mute microphone"}>
@@ -2164,7 +2185,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         onClick={() => voiceMode.toggleMic()}
                         aria-label={voiceMode.micMuted() ? "Unmute microphone" : "Mute microphone"}
                       >
-                        <Icon name={voiceMode.micMuted() ? "microphone-slash" : "microphone"} class="size-5 sm:size-4.5" />
+                        <Icon
+                          name={voiceMode.micMuted() ? "microphone-slash" : "microphone"}
+                          class="size-5 sm:size-4.5"
+                        />
                       </Button>
                     </Tooltip>
                   </Show>

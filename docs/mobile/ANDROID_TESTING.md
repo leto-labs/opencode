@@ -9,6 +9,7 @@ Quick guide to run and test the OpenCode mobile app on your Android phone.
 - **Android phone**: Running Android 7.0+ with a USB cable
 
 **First time setup:**
+
 ```bash
 # Install Rust if you don't have it
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -66,6 +67,7 @@ That's it! The app will build, install on your phone, and launch automatically.
 ### Device not found
 
 **Solutions:**
+
 - Make sure USB cable supports data (not just charging)
 - Check you tapped "Allow" on your phone
 - Try unplugging and plugging back in
@@ -75,12 +77,12 @@ That's it! The app will build, install on your phone, and launch automatically.
 
 ### Build fails
 
-| Error | Solution |
-|-------|----------|
-| "ANDROID_HOME not set" | Install Android Studio or set `ANDROID_HOME` environment variable |
-| "Gradle sync failed" | Open `src-tauri/gen/android` in Android Studio and sync |
-| "NDK not found" | Install NDK via Android Studio SDK Manager |
-| "Java version incompatible" | Install JDK 17+ |
+| Error                       | Solution                                                          |
+| --------------------------- | ----------------------------------------------------------------- |
+| "ANDROID_HOME not set"      | Install Android Studio or set `ANDROID_HOME` environment variable |
+| "Gradle sync failed"        | Open `src-tauri/gen/android` in Android Studio and sync           |
+| "NDK not found"             | Install NDK via Android Studio SDK Manager                        |
+| "Java version incompatible" | Install JDK 17+                                                   |
 
 [Tauri Android prerequisites](https://v2.tauri.app/guides/prerequisites/#android)
 
@@ -93,9 +95,11 @@ That's it! The app will build, install on your phone, and launch automatically.
 ### Microphone doesn't work
 
 **Permission dialog doesn't appear:**
+
 - Verify AndroidManifest.xml includes `<uses-permission android:name="android.permission.RECORD_AUDIO" />`
 
 **Permission denied:**
+
 1. Go to **Settings** → **Apps** → **OpenCode** → **Permissions**
 2. Enable **Microphone**
 3. Restart the app

@@ -67,10 +67,10 @@ plugins/foreground-service/
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `startService` | Start foreground service (notification + wake lock). |
-| `stopService` | Stop foreground service, release wake lock, remove notification. |
+| Command        | Description                                                      |
+| -------------- | ---------------------------------------------------------------- |
+| `startService` | Start foreground service (notification + wake lock).             |
+| `stopService`  | Stop foreground service, release wake lock, remove notification. |
 
 Frontend usage (from `packages/app/src/hooks/use-realtime-connection.ts`):
 
@@ -162,12 +162,12 @@ Start a voice session on the phone. If the foreground service starts, you'll see
 
 ## Android Version Compatibility
 
-| Android Version | API Level | Notes |
-|-----------------|-----------|-------|
-| Android 8+ | 26+ | Requires `startForegroundService()` |
-| Android 10+ | 29+ | Requires `foregroundServiceType` in `startForeground()` |
-| Android 13+ | 33+ | Requires `POST_NOTIFICATIONS` runtime permission |
-| Android 14+ | 34+ | Must declare `foregroundServiceType` in both manifest AND `startForeground()` |
+| Android Version | API Level | Notes                                                                         |
+| --------------- | --------- | ----------------------------------------------------------------------------- |
+| Android 8+      | 26+       | Requires `startForegroundService()`                                           |
+| Android 10+     | 29+       | Requires `foregroundServiceType` in `startForeground()`                       |
+| Android 13+     | 33+       | Requires `POST_NOTIFICATIONS` runtime permission                              |
+| Android 14+     | 34+       | Must declare `foregroundServiceType` in both manifest AND `startForeground()` |
 
 ## Known Limitations
 
@@ -179,14 +179,14 @@ Start a voice session on the phone. If the foreground service starts, you'll see
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `packages/app/src/hooks/use-realtime-connection.ts` | Frontend: calls startService/stopService |
-| `packages/desktop/src-tauri/src/lib.rs` | Plugin initialization (`#[cfg(mobile)]`) |
-| `packages/desktop/src-tauri/capabilities/default.json` | Permission grants for startService/stopService |
-| `plugins/foreground-service/src/lib.rs` | Rust plugin API |
-| `plugins/foreground-service/android/.../ForegroundServicePlugin.kt` | Kotlin: startService/stopService commands |
-| `plugins/foreground-service/android/.../ForegroundService.kt` | Kotlin: foreground service + notification + wake lock |
+| File                                                                | Purpose                                               |
+| ------------------------------------------------------------------- | ----------------------------------------------------- |
+| `packages/app/src/hooks/use-realtime-connection.ts`                 | Frontend: calls startService/stopService              |
+| `packages/desktop/src-tauri/src/lib.rs`                             | Plugin initialization (`#[cfg(mobile)]`)              |
+| `packages/desktop/src-tauri/capabilities/default.json`              | Permission grants for startService/stopService        |
+| `plugins/foreground-service/src/lib.rs`                             | Rust plugin API                                       |
+| `plugins/foreground-service/android/.../ForegroundServicePlugin.kt` | Kotlin: startService/stopService commands             |
+| `plugins/foreground-service/android/.../ForegroundService.kt`       | Kotlin: foreground service + notification + wake lock |
 
 ## References
 

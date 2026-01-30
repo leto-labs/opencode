@@ -15,7 +15,12 @@ export const DialogSettings: Component = () => {
 
   return (
     <Dialog size="x-large" transition>
-      <Tabs orientation="vertical" variant="settings" defaultValue="general" class="h-full settings-dialog max-h-[90vh] sm:max-h-none">
+      <Tabs
+        orientation="vertical"
+        variant="settings"
+        defaultValue="general"
+        class="h-full settings-dialog max-h-[90vh] sm:max-h-none"
+      >
         <Tabs.List class="settings-tabs-list">
           {/* Mobile: Simple flat list | Desktop: Grouped sections */}
           <div class="flex flex-col sm:flex-col justify-between h-full w-full">
