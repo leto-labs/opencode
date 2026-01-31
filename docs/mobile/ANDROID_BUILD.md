@@ -1,5 +1,13 @@
 # Android Build Guide
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Environment Configuration](#environment-configuration)
+- [Dev Build (on-device debugging)](#dev-build-on-device-debugging)
+- [Release Build](#release-build)
+- [Troubleshooting](#troubleshooting)
+
 ## Prerequisites
 
 - Android SDK and NDK installed (auto-detected from `~/Android/Sdk`)

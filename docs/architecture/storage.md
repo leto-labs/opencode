@@ -2,6 +2,19 @@
 
 The storage module provides a simple JSON file-based persistence layer for OpenCode.
 
+**Source:** [`packages/opencode/src/storage/storage.ts`](../../packages/opencode/src/storage/storage.ts)
+
+## Table of Contents
+
+- [Location](#location)
+- [Key Structure](#key-structure)
+- [API](#api)
+- [Locking](#locking)
+- [Error Handling](#error-handling)
+- [Common Patterns](#common-patterns)
+- [Storage Layout](#storage-layout)
+- [Migrations](#migrations)
+
 ## Location
 
 Storage files are located at:

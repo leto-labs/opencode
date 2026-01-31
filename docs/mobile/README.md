@@ -2,6 +2,14 @@
 
 Mobile app for iOS and Android, built with Tauri v2 using the shared `packages/desktop/` codebase.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Key Differences from Desktop](#key-differences-from-desktop)
+- [Getting Started](#getting-started)
+- [Documentation](#documentation)
+
 ## Overview
 
 The mobile app provides the full OpenCode UI (text chat + voice mode) on phones and tablets. Unlike desktop which spawns a local sidecar server, mobile connects to a **remote OpenCode server** running on your computer or a cloud instance.
@@ -9,8 +17,8 @@ The mobile app provides the full OpenCode UI (text chat + voice mode) on phones 
 ### Current Status
 
 - Text chat, UI rendering, project selection, server connection
-- Voice mode (OpenAI Realtime WebRTC, foreground only)
-- Background audio not yet working (see [VOICE_BACKGROUND_AUDIO.md](./VOICE_BACKGROUND_AUDIO.md))
+- Voice mode (OpenAI Realtime WebRTC)
+- Android background voice support via foreground service plugin (device-dependent; see [ANDROID_FOREGROUND_SERVICE.md](./ANDROID_FOREGROUND_SERVICE.md) and [VOICE_BACKGROUND_AUDIO.md](./VOICE_BACKGROUND_AUDIO.md))
 
 ## Architecture
 
@@ -48,7 +56,7 @@ The mobile app provides the full OpenCode UI (text chat + voice mode) on phones 
 | Server           | Local sidecar subprocess | Remote connection              |
 | Input            | Keyboard/Mouse + Voice   | Touch + Voice                  |
 | Voice transport  | WebRTC in WebView        | WebRTC in WebView (same)       |
-| Background voice | N/A                      | Not yet working                |
+| Background voice | N/A                      | Device-dependent (foreground service plugin) |
 | File pickers     | Native OS dialogs        | Server-based directory picker  |
 | Build            | Single binary            | Xcode (iOS) / Gradle (Android) |
 

@@ -2,6 +2,14 @@
 
 **Status: COMPLETE**
 
+## Table of Contents
+
+- [PRD](#prd)
+- [Architecture](#architecture)
+- [Tasks](#tasks)
+- [Implementation Summary](#implementation-summary)
+- [Key Decisions](#key-decisions)
+
 ## PRD
 
 Integrate GPT Realtime as a selectable model in the UI. When selected:
@@ -49,6 +57,8 @@ Text Input          Voice Input           Assistant Response
 - [x] Session-scoped ephemeral keys with caching
 - [x] Auto-connect on text submit if not connected
 - [x] Extract `useRealtimeConnection` hook
+
+> **Historical note:** The “realtime model in the picker” approach was later removed (see Phase 4e-1 in [`PHASE-4.md`](./PHASE-4.md)). Current behavior is “voice as a call overlay”: start/end a call from the prompt bar; when a call is active, input is routed to OpenAI Realtime regardless of the selected text model. See [`README.md`](./README.md).
 
 ## Implementation Summary
 

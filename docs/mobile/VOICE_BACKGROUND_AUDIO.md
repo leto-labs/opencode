@@ -2,6 +2,16 @@
 
 Status of voice mode on mobile and the challenge of background audio support.
 
+## Table of Contents
+
+- [Current Architecture (What Works)](#current-architecture-what-works)
+- [The Background Audio Problem](#the-background-audio-problem)
+- [Current Approach: Foreground Service (Approach 1)](#current-approach-foreground-service-approach-1)
+- [Alternative Approaches for Background Audio](#alternative-approaches-for-background-audio)
+- [Recommended Path](#recommended-path)
+- [Platform-Specific Background Audio Details](#platform-specific-background-audio-details)
+- [References](#references)
+
 ## Current Architecture (What Works)
 
 Voice mode uses the **OpenAI Realtime WebRTC** transport, running entirely inside the WebView:
@@ -205,18 +215,18 @@ Use WebRTC in the foreground, switch to native audio when backgrounding.
 - `WAKE_LOCK` permission and `PARTIAL_WAKE_LOCK` acquisition
 - `POST_NOTIFICATIONS` runtime permission (Android 13+)
 
-**Already in place (from d29602a):**
+**Implemented in this repo:**
 
-- Manifest permissions declared
-- `ForegroundService` class exists (in foreground-service plugin)
-- Wake lock implementation exists
-- Notification channel and notification builder exist
+- Foreground service plugin (notification + wake lock): [`packages/desktop/src-tauri/plugins/foreground-service/`](../../packages/desktop/src-tauri/plugins/foreground-service/)
+- Plugin wired into the mobile build: [`packages/desktop/src-tauri/src/lib.rs`](../../packages/desktop/src-tauri/src/lib.rs) (`#[cfg(mobile)]`)
+- Frontend starts/stops the service with the voice call lifecycle: [`packages/app/src/hooks/use-realtime-connection.ts`](../../packages/app/src/hooks/use-realtime-connection.ts)
+- Capability grants for the commands: [`packages/desktop/src-tauri/capabilities/default.json`](../../packages/desktop/src-tauri/capabilities/default.json)
 
-**Missing:**
+**Still uncertain / remaining work:**
 
-- Plugin not initialized in `lib.rs`
-- No frontend code to start/stop the foreground service
-- No integration between foreground service and WebRTC voice session
+- Whether Android WebView preserves WebRTC audio/mic streams in the background even with a foreground service (device/OEM dependent)
+- Better UX around battery optimization whitelisting on aggressive OEM builds
+- Lock screen controls / media session integration (not implemented)
 
 ### iOS
 

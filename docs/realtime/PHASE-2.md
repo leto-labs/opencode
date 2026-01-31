@@ -2,6 +2,13 @@
 
 **Status: COMPLETE**
 
+## Table of Contents
+
+- [PRD](#prd)
+- [Tasks](#tasks)
+- [Implementation Summary](#implementation-summary)
+- [Key Decisions](#key-decisions)
+
 ## PRD
 
 Add server-side endpoints for transcript storage and tool execution. Enables client-side inference with server-side persistence and tool execution.
@@ -21,9 +28,10 @@ Add server-side endpoints for transcript storage and tool execution. Enables cli
 POST /session/:sessionID/transcript
 {
   role: "user" | "assistant",
-  text: string,
-  messageID?: string,    // Optional: for deduplication with optimistic UI
-  parts?: Part[]         // Optional: structured parts
+  messageID?: string,    // Optional: for optimistic UI reconciliation
+  model?: { providerID: string, modelID: string }, // Optional: defaults to { client/client } if omitted
+  agent?: string,        // Optional: defaults to "client" if omitted
+  parts: Part[]          // Required: structured parts (TextPart/FilePart/AgentPart/SubtaskPart)
 }
 ```
 
@@ -34,7 +42,9 @@ POST /session/:sessionID/tool/call
 {
   toolName: string,
   callId: string,
-  arguments: object
+  arguments: object,
+  model: { providerID: string, modelID: string }, // Required (task subagent inheritance)
+  agent?: string
 }
 ```
 

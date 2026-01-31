@@ -2,6 +2,20 @@
 
 This guide covers deploying opencode as an always-on headless server on a Linux VM, exposed publicly with password authentication and managed via systemd.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Step-by-Step Setup](#step-by-step-setup)
+- [Recommended: Reverse Proxy with TLS](#recommended-reverse-proxy-with-tls)
+- [Docker Alternative](#docker-alternative)
+- [Configuration](#configuration)
+- [Operations](#operations)
+- [API Reference](#api-reference)
+- [Cross-Origin Basic Auth (Web App)](#cross-origin-basic-auth-web-app)
+- [Troubleshooting](#troubleshooting)
+
 ## Overview
 
 OpenCode has a built-in `serve` command that starts a headless HTTP server. The web UI is served by proxying to `app.opencode.ai`, so the server exposes both the API and the webapp. The server supports:

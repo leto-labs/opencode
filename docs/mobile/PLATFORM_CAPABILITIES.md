@@ -2,6 +2,17 @@
 
 This document compares iOS and Android capabilities relevant to OpenCode mobile, with focus on voice and background execution.
 
+## Table of Contents
+
+- [Summary Matrix](#summary-matrix)
+- [iOS Capabilities](#ios-capabilities)
+- [Android Capabilities](#android-capabilities)
+- [Cross-Platform Comparison](#cross-platform-comparison)
+- [Implementation Effort Comparison](#implementation-effort-comparison)
+- [Recommendations](#recommendations)
+- [Risk Assessment](#risk-assessment)
+- [Testing Checklist](#testing-checklist)
+
 ## Summary Matrix
 
 | Capability                | iOS            | Android           | Notes                      |

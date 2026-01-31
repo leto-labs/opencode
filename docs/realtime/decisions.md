@@ -2,6 +2,22 @@
 
 This document records key architecture decisions for the realtime integration.
 
+## Table of Contents
+
+- [D1: Direct Client Connection](#d1-direct-client-connection)
+- [D2: Use Official OpenAI Agents SDK](#d2-use-official-openai-agents-sdk)
+- [D3: Ephemeral Keys for Production](#d3-ephemeral-keys-for-production)
+- [D4: Audio Format Standardization](#d4-audio-format-standardization)
+- [D5: Transcript-Only Persistence](#d5-transcript-only-persistence)
+- [D6: Server-Side Tool Execution](#d6-server-side-tool-execution)
+- [D7: VAD Mode Default](#d7-vad-mode-default)
+- [D8: Interruption Handling](#d8-interruption-handling)
+- [D9: Tool State Extension](#d9-tool-state-extension)
+- [D10: Async Transcript Sync](#d10-async-transcript-sync)
+- [D11: Reconnection Strategy](#d11-reconnection-strategy)
+- [D12: Cost Tracking](#d12-cost-tracking)
+- [Open Questions](#open-questions)
+
 ---
 
 ## D1: Direct Client Connection
@@ -9,7 +25,7 @@ This document records key architecture decisions for the realtime integration.
 **Decision**: Client connects directly to OpenAI Realtime API. Server handles async operations only.
 
 ```
-Client ←WebSocket→ OpenAI Realtime API (direct)
+Client ←WebRTC→ OpenAI Realtime API (direct)
 Client ←HTTP→ OpenCode Server (async: tools, storage, keys)
 ```
 
@@ -32,10 +48,10 @@ Client ←HTTP→ OpenCode Server (async: tools, storage, keys)
 
 ## D2: Use Official OpenAI Agents SDK
 
-**Decision**: Use `@openai/agents-realtime` SDK instead of raw WebSocket.
+**Decision**: Use OpenAI’s official Agents SDK (`@openai/agents`) instead of implementing the realtime protocol ourselves.
 
 ```typescript
-import { OpenAIRealtimeWebSocket } from "@openai/agents-realtime"
+import { RealtimeSession, RealtimeAgent, OpenAIRealtimeWebRTC } from "@openai/agents/realtime"
 ```
 
 **Rationale**:
@@ -68,7 +84,7 @@ import { OpenAIRealtimeWebSocket } from "@openai/agents-realtime"
 - Ephemeral keys expire (~1 hour)
 - Server controls which models/tools are available
 
-**Development Exception**: Phase 1-3 use client-side API key for simplicity.
+**Historical note**: Early iterations used a client API key for speed of iteration; the current implementation uses session-scoped ephemeral keys (`/session/:id/client_secret`) so the main OpenAI API key never reaches the client.
 
 ---
 
@@ -117,7 +133,8 @@ import { OpenAIRealtimeWebSocket } from "@openai/agents-realtime"
 - Server has filesystem access
 - Tools run in controlled environment
 - Consistent with text-mode tool execution
-- Same permission system applies
+- Same tool implementations and storage apply
+- **Important**: The session `/tool/call` path is designed for client-side inference and currently bypasses interactive permission prompts (so voice mode should restrict the tool set to a “voice-safe” subset)
 
 **Trade-off**: Extra round-trip for tool calls (~50-200ms).
 

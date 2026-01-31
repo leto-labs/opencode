@@ -2,21 +2,33 @@
 
 ## System Overview
 
-The realtime architecture uses a **direct client connection** model where the web client connects directly to OpenAI's Realtime API for audio, while the OpenCode server handles async operations.
+The realtime architecture uses a **direct client connection** model:
+
+- The web client connects **directly to OpenAI Realtime over WebRTC** for low-latency audio
+- The OpenCode server handles **async HTTP** for ephemeral keys, transcripts, tool execution, and prompt/tool configuration
+
+## Table of Contents
+
+- [System Overview](#system-overview)
+- [Message Flow](#message-flow)
+- [Component Responsibilities](#component-responsibilities)
+- [Why Direct Connection?](#why-direct-connection)
+- [Security Model](#security-model)
+- [Session Integration](#session-integration)
+- [Audio Format](#audio-format)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                          Web Client                                  │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
 │  │ Audio Input  │  │ Audio Output │  │ OpenAI SDK               │  │
-│  │ (Microphone) │  │ (Speaker)    │  │ (OpenAIRealtimeWebSocket)│  │
+│  │ (Microphone) │  │ (Speaker)    │  │ (@openai/agents/realtime)│  │
 │  └──────┬───────┘  └──────▲───────┘  └──────────┬───────────────┘  │
 │         │                 │                      │                  │
 │         └────────────┬────┴──────────────────────┘                  │
 │                      │                                               │
 └──────────────────────┼───────────────────────────────────────────────┘
-                       │ WebSocket (direct to OpenAI)
-                       │ wss://api.openai.com/v1/realtime
+                       │ WebRTC (direct to OpenAI)
                        │
 ┌──────────────────────┼───────────────────────────────────────────────┐
 │ OpenAI Realtime API  │                                               │
@@ -40,7 +52,8 @@ The realtime architecture uses a **direct client connection** model where the we
 │  │ GET  /session/:id/client_secret → Get cached key               │  │
 │  │ POST /session/:id/transcript    → Persist transcripts          │  │
 │  │ POST /session/:id/tool/call     → Execute tool                 │  │
-│  │ GET  /session/:id/tools         → List available tools [TODO]  │  │
+│  │ GET  /session/:id/tools         → List available tools         │  │
+│  │ GET  /session/:id/system_prompt → Fetch assembled instructions │  │
 │  └────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -51,7 +64,7 @@ The realtime architecture uses a **direct client connection** model where the we
 
 ```
 1. Client captures microphone audio (24kHz PCM16)
-2. Client sends audio chunks directly to OpenAI via WebSocket
+2. Client sends audio directly to OpenAI via WebRTC
 3. OpenAI detects speech end via VAD
 4. OpenAI generates response audio
 5. Client receives audio chunks, plays through speakers
@@ -89,11 +102,10 @@ The realtime architecture uses a **direct client connection** model where the we
 
 | Component          | Responsibility                    |
 | ------------------ | --------------------------------- |
-| `useRealtime`      | SDK lifecycle, state management   |
-| `useAudioCapture`  | Microphone → PCM16 → SDK          |
-| `useAudioPlayback` | SDK → PCM16 → Speaker             |
-| Transcript sync    | POST events to server (debounced) |
-| Tool forwarding    | POST function calls to server     |
+| [`voice-mode.tsx`](../../packages/app/src/context/voice-mode.tsx) | Voice mode state, transcript persistence, UI updates |
+| [`use-realtime-connection.ts`](../../packages/app/src/hooks/use-realtime-connection.ts) | WebRTC connection lifecycle + session config + history injection |
+| Web Audio / `<audio>` element | Microphone capture + speaker playback (managed by `OpenAIRealtimeWebRTC`) |
+| [`openai-realtime-tool.ts`](../../packages/app/src/util/openai-realtime-tool.ts) | Server tool definitions → executable `@openai/agents/realtime` tools |
 
 ### OpenCode Server
 
@@ -104,6 +116,8 @@ The realtime architecture uses a **direct client connection** model where the we
 | `POST /session/:id/transcript`    | Persist transcript parts        |
 | `GET /session/:id/message`        | Retrieve message history        |
 | `POST /session/:id/tool/call`     | Execute tool, return result     |
+| `GET /session/:id/tools`          | List tools (voice-safe subset: `glob`, `grep`, `task`) |
+| `GET /session/:id/system_prompt`  | Assembled instructions          |
 
 ### OpenAI Realtime API
 
@@ -165,9 +179,9 @@ Client ←→ Server ←→ OpenAI
 Realtime conversations integrate with existing opencode sessions:
 
 1. **Session Creation**: Same as text mode
-2. **Transcript Persistence**: Stored as `TextPart` with `metadata.realtime: true`
+2. **Transcript Persistence**: Stored via `POST /session/:id/transcript` as normal `TextPart` parts (OpenCode tags these parts with `metadata.source: "realtime"` today).
 3. **Tool Execution**: Same `Tool.execute()` pipeline
-4. **Cost Tracking**: Audio tokens tracked separately
+4. **Cost Tracking**: Not currently tracked for realtime transcripts (message `cost`/`tokens` are `0`); can be added later if needed.
 
 ### Message Structure
 
@@ -179,11 +193,8 @@ Realtime conversations integrate with existing opencode sessions:
     {
       type: "text",
       text: "What's the weather?",
-      synthetic: true,  // Transcribed from audio
       metadata: {
-        realtime: true,
-        source: "user_audio",
-        item_id: "item_abc"
+        source: "realtime"
       }
     }
   ]
@@ -197,9 +208,7 @@ Realtime conversations integrate with existing opencode sessions:
       type: "text",
       text: "Let me check the weather for you.",
       metadata: {
-        realtime: true,
-        source: "assistant_audio",
-        response_id: "resp_xyz"
+        source: "realtime"
       }
     },
     {
@@ -210,11 +219,13 @@ Realtime conversations integrate with existing opencode sessions:
     {
       type: "text",
       text: "It's 72°F and sunny.",
-      metadata: { realtime: true, source: "assistant_audio" }
+      metadata: { source: "realtime" }
     }
   ]
 }
 ```
+
+> Note: The OpenAI Realtime API exposes richer event metadata (e.g. `item_id`, `response_id`, partial transcript deltas). OpenCode currently persists only the final transcript text + a simple `source` tag.
 
 ## Audio Format
 

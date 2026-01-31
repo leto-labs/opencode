@@ -2,13 +2,20 @@
 
 **Status: IN PROGRESS - Phase 4e-4 complete, Phase 4e-5 (subagent response handling) pending**
 
+## Table of Contents
+
+- [PRD](#prd)
+- [Critical Issue: Token Limits](#critical-issue-token-limits)
+- [Architecture](#architecture)
+- [Implementation Notes / Phases](#tasks)
+
 ## PRD
 
 Enable the voice assistant to execute OpenCode tools. When OpenAI generates a function call, the client forwards it to the server for execution, then sends the result back to OpenAI. The voice agent should also use OpenCode's system prompt for consistent behavior.
 
 ---
 
-## ⚠️ Critical Issue: Token Limits
+## Critical Issue: Token Limits
 
 ### Problem
 
@@ -39,7 +46,7 @@ Adopt a pattern similar to the `chatSupervisor` example from OpenAI's realtime-a
 │  │  Tools:          │                    └──────────────────┘       │
 │  │  - glob (light)  │                                               │
 │  │  - grep (light)  │                                               │
-│  │  - subagent ─────┼────────────────┐                              │
+│  │  - task ─────────┼────────────────┐                              │
 │  └──────────────────┘                │                              │
 │                                      ▼                              │
 │                         ┌──────────────────┐                        │
@@ -81,7 +88,7 @@ Adopt a pattern similar to the `chatSupervisor` example from OpenAI's realtime-a
 
 - `glob` - Returns file paths only (small output)
 - `grep` - Returns matching lines only (bounded output)
-- `subagent` - Delegates to text model, returns summary
+- `task` - Delegates heavy work to a text subagent (server-side), returns a concise summary
 
 **Subagent Tools** (high token impact, handled by text model):
 
@@ -241,6 +248,8 @@ SessionTool.call({
   toolName: "read",
   callId: "call_123",
   arguments: { filePath: "/path/to/file" },
+  model: { providerID: "anthropic", modelID: "claude-sonnet" },
+  agent: "default",
 })
 // Returns: { callId, result, error? }
 ```
@@ -394,6 +403,8 @@ session.on("function_call_arguments.done", async (event) => {
     toolName: name,
     callId: call_id,
     arguments: JSON.parse(args),
+    model: local.model.current()!.api,
+    agent: local.agent.current()!,
   })
 
   // Send result back to OpenAI
@@ -502,7 +513,7 @@ const agent = new RealtimeAgent({
 - [x] `GET /session/:id/tools` - List available tools in OpenAI function format
 - [x] Zod to JSON Schema conversion using Zod 4 native `z.toJSONSchema()`
 - [x] `GET /session/:id/system_prompt` - Get assembled instructions (inline in routes)
-- [x] Filter tools for voice mode (exclude task, question, batch, etc.)
+- [x] Filter tools for voice mode (voice-safe subset: `glob`, `grep`, `task`)
 
 ### Client (Current - Working but hits token limits)
 
@@ -589,9 +600,9 @@ Refactor voice tool calling to use a subagent architecture that avoids token lim
 
 ### Implementation Plan
 
-#### Step 1: Create Voice-Specific Subagent Tool
+#### Step 1: Use `task` as the delegation tool (implemented)
 
-Create a new tool specifically for voice mode that calls a text model:
+In this repo, voice mode delegates heavy work via the existing `task` tool (not a new `subagent` tool). The snippet below is an *alternative* approach that was considered.
 
 ```typescript
 // packages/opencode/src/tool/voice-subagent.ts
@@ -636,7 +647,7 @@ Update client-side filter in `use-realtime-connection.ts`:
 const VOICE_REALTIME_TOOLS = new Set([
   "glob", // Light - returns file paths only
   "grep", // Light - returns matching lines
-  "subagent", // Delegates to text model
+  "task", // Delegates to a text subagent
 ])
 ```
 
@@ -648,7 +659,7 @@ Create a condensed voice-specific system prompt:
 // Instead of full OpenCode prompt (~15k tokens)
 // Use a minimal prompt (~1k tokens) that:
 // - Describes the agent's role
-// - Explains available tools (glob, grep, subagent)
+// - Explains available tools (glob, grep, task)
 // - Instructs to delegate complex tasks to subagent
 ```
 

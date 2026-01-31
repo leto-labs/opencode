@@ -2,6 +2,20 @@
 
 This document describes the key patterns and conventions used throughout the OpenCode codebase.
 
+## Table of Contents
+
+- [1. Namespace Pattern](#1-namespace-pattern)
+- [2. SDK Generation Pattern](#2-sdk-generation-pattern)
+- [3. Event Bus Pattern](#3-event-bus-pattern)
+- [4. Context Provider Pattern (SolidJS)](#4-context-provider-pattern-solidjs)
+- [5. Identifier Pattern](#5-identifier-pattern)
+- [6. Optimistic Update Pattern](#6-optimistic-update-pattern)
+- [7. Validation Pattern](#7-validation-pattern)
+- [8. Error Handling Pattern](#8-error-handling-pattern)
+- [9. Directory-Scoped Pattern](#9-directory-scoped-pattern)
+- [10. Async Iteration for Streams](#10-async-iteration-for-streams)
+- [Summary](#summary)
+
 ## 1. Namespace Pattern
 
 Business logic is organized into namespaces. Routes are thin wrappers that delegate to namespaces.
@@ -86,8 +100,8 @@ API contracts are defined once in route files and automatically generate TypeScr
    └─ Zod schemas for request/response
 
 2. Extract OpenAPI Spec
-   └─ `bun dev generate` in packages/opencode
-   └─ Outputs to packages/sdk/openapi.json
+   └─ `bun ./packages/sdk/js/script/build.ts` (recommended)
+   └─ Under the hood runs `bun dev generate` in `packages/opencode` and generates SDK code into `packages/sdk/js/src/v2/gen`
 
 3. Generate TypeScript
    └─ @hey-api/openapi-ts processes spec
@@ -208,7 +222,7 @@ State is managed through SolidJS contexts using a factory pattern.
 ### Context Definition
 
 ```typescript
-// src/context/voice-mode.tsx
+// packages/app/src/context/voice-mode.tsx
 import { createSimpleContext } from "@opencode-ai/ui/context"
 
 export const { use: useVoiceMode, provider: VoiceModeProvider } = createSimpleContext({

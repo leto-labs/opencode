@@ -99,10 +99,10 @@ Different tools use different permission types:
 | Permission           | Used By                               | Pattern Represents |
 | -------------------- | ------------------------------------- | ------------------ |
 | `read`               | `read` tool                           | File path          |
-| `edit`               | `edit`, `write`, `patch`, `multiedit` | File path          |
+| `edit`               | `edit`, `write`, `apply_patch`        | File path          |
 | `bash`               | `bash` tool                           | Command prefix     |
-| `grep`               | `grep` tool                           | Search path        |
-| `glob`               | `glob` tool                           | Search path        |
+| `grep`               | `grep` tool                           | Search pattern (regex) |
+| `glob`               | `glob` tool                           | Glob pattern       |
 | `external_directory` | Any file access outside workspace     | Directory path     |
 | `doom_loop`          | Session processor                     | `*` (system-wide)  |
 | `question`           | `question` tool                       | `*`                |
@@ -211,7 +211,6 @@ permission: PermissionNext.merge(
     "*": "deny", // Deny everything by default
     grep: "allow", // Allow search tools
     glob: "allow",
-    list: "allow",
     bash: "allow", // Allow bash (for git, etc.)
     webfetch: "allow",
     websearch: "allow",

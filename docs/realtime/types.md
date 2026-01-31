@@ -1,6 +1,21 @@
 # TypeScript Types for Realtime
 
-This document describes the TypeScript types used for realtime voice support.
+This document describes TypeScript types you’ll encounter while working on realtime voice support.
+
+> Note: This file is partly aspirational.
+>
+> - The current implementation persists realtime transcripts as normal `TextPart` entries via `POST /session/:id/transcript`, tagging parts with `metadata.source: "realtime"` (see [`packages/app/src/context/voice-mode.tsx`](../../packages/app/src/context/voice-mode.tsx)).
+> - Tool execution in realtime is represented as normal `ToolPart` entries created by the server (see [`packages/opencode/src/session/tool.ts`](../../packages/opencode/src/session/tool.ts)).
+
+## Table of Contents
+
+- [Message Parts](#message-parts)
+- [API Types](#api-types)
+- [Client Hook Types](#client-hook-types)
+- [SDK Types (`@openai/agents/realtime` + `@openai/agents-realtime`)](#sdk-types-openaiagentsrealtime--openaiagents-realtime)
+- [Server Event Types (Zod Schemas)](#server-event-types-zod-schemas)
+- [Audio Utility Types](#audio-utility-types)
+- [Error Types](#error-types)
 
 ## Message Parts
 
@@ -179,7 +194,19 @@ interface Message {
 }
 ```
 
-## SDK Types (from @openai/agents-realtime)
+## SDK Types (`@openai/agents/realtime` + `@openai/agents-realtime`)
+
+In this repo:
+
+- Runtime imports come from `@openai/agents/realtime`
+- Some type helpers are imported from `@openai/agents-realtime` (note the dash)
+
+Example (current app code):
+
+```typescript
+import { OpenAIRealtimeWebRTC, RealtimeAgent, RealtimeSession } from "@openai/agents/realtime"
+import type { RealtimeItem } from "@openai/agents-realtime"
+```
 
 ### Transport Events
 
@@ -251,7 +278,7 @@ import {
   inputAudioBufferSpeechStartedEventSchema,
   inputAudioBufferSpeechStoppedEventSchema,
   type RealtimeServerEvent,
-} from "@openai/agents-realtime/dist/openaiRealtimeEvents"
+} from "@openai/agents-realtime/dist/openaiRealtimeEvents" // path may vary by SDK version
 
 // Derive types
 type UserTranscriptEvent = z.infer<typeof conversationItemInputAudioTranscriptionCompletedEventSchema>
