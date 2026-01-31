@@ -42,6 +42,7 @@ bun dev -- --port 4444
   - Setup: [`docs/MOBILE_SETUP.md`](./MOBILE_SETUP.md)
   - Index: [`docs/mobile/README.md`](./mobile/README.md)
 - **Headless server deployment**: [`docs/server/README.md`](./server/README.md)
+- **Upstream sync** (maintaining sync with upstream opencode): [`docs/UPSTREAM.md`](./UPSTREAM.md)
 
 ## Key concepts
 
