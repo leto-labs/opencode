@@ -2,6 +2,14 @@
 
 This document describes the process for adding new API endpoints to OpenCode. Following this process ensures type safety, consistency, and proper client integration.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Step-by-Step Guide](#step-by-step-guide)
+- [Why This Pattern?](#why-this-pattern)
+- [Common Mistakes](#common-mistakes)
+- [File Reference](#file-reference)
+
 ## Overview
 
 OpenCode uses a **generated SDK pattern**:
@@ -83,7 +91,7 @@ export const SessionRoutes = lazy(() =>
 
 **Key elements:**
 
-- `operationId`: Becomes the SDK method name (e.g., `session.transcript.add` → `sdk.client.session.transcriptAdd()`)
+- `operationId`: Becomes the SDK method name (e.g., `session.transcript.add` → `sdk.client.session.transcript.add()`)
 - `describeRoute()`: OpenAPI documentation
 - `validator()`: Request validation with Zod schemas
 - `resolver()`: Response schema for type generation
@@ -140,9 +148,11 @@ bun test test/server/session-transcript.test.ts
 After adding server routes, regenerate the SDK:
 
 ```bash
-cd packages/sdk/js
-bun run build
+# Recommended (from repo root)
+bun ./packages/sdk/js/script/build.ts
 ```
+
+Alternative (from `packages/sdk/js/`): `bun run build`
 
 This will:
 
@@ -153,7 +163,7 @@ This will:
 **Verify the new types exist:**
 
 ```bash
-grep -r "transcriptAdd" packages/sdk/js/src/v2/gen/
+grep -n "class Transcript" packages/sdk/js/src/v2/gen/sdk.gen.ts
 ```
 
 ### Step 4: Use in Client App
@@ -169,15 +179,14 @@ function MyComponent() {
 
   const sendTranscript = async () => {
     // Type-safe API call with proper headers
-    const response = await sdk.client.session.transcriptAdd({
+    const response = await sdk.client.session.transcript.add({
       sessionID: session.id,
       role: "user",
-      text: "Hello!",
-      metadata: { source: "text" },
+      parts: [{ type: "text", text: "Hello!", metadata: { source: "text" } }],
     })
 
     if (response.data) {
-      console.log("Created message:", response.data.messageID)
+      console.log("Created message:", response.data.info.id)
     }
   }
 }
@@ -213,14 +222,17 @@ Generated client provides consistent error handling across all endpoints.
 // WRONG - Missing headers, no type safety
 await fetch(`${url}/session/${id}/transcript`, {
   method: "POST",
-  body: JSON.stringify({ role: "user", text }),
+  body: JSON.stringify({
+    role: "user",
+    parts: [{ type: "text", text }],
+  }),
 })
 
 // CORRECT - Use SDK client
-await sdk.client.session.transcriptAdd({
+await sdk.client.session.transcript.add({
   sessionID: id,
   role: "user",
-  text,
+  parts: [{ type: "text", text }],
 })
 ```
 
@@ -229,7 +241,7 @@ await sdk.client.session.transcriptAdd({
 If you add a server route but don't regenerate the SDK, the client method won't exist. Always run:
 
 ```bash
-cd packages/sdk/js && bun run build
+bun ./packages/sdk/js/script/build.ts
 ```
 
 ### Missing OpenAPI Annotations

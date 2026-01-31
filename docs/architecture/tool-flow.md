@@ -11,11 +11,24 @@ Tools enable LLMs to interact with the local environment (file system, shell, LS
 | **Server-side** | Server (in agent loop) | Server           | Server continues loop      |
 | **Client-side** | Client (from provider) | Server (relayed) | Client returns to provider |
 
+## Table of Contents
+
+- [Default Tools](#default-tools)
+- [Tool Interface](#tool-interface)
+- [Server-Side Tool Flow (Traditional)](#server-side-tool-flow-traditional)
+- [Client-Side Tool Flow (Realtime)](#client-side-tool-flow-realtime)
+- [Tool Part Storage](#tool-part-storage)
+- [Permission System](#permission-system)
+- [Safeguards and Error Handling](#safeguards-and-error-handling)
+- [Comparison](#comparison)
+- [Related Files](#related-files)
+- [See Also](#see-also)
+
 ---
 
 ## Default Tools
 
-OpenCode provides **18+ built-in tools** registered in `packages/opencode/src/tool/registry.ts`:
+OpenCode provides a set of built-in tools registered in [`packages/opencode/src/tool/registry.ts`](../../packages/opencode/src/tool/registry.ts):
 
 ### Core Tools
 
@@ -23,14 +36,14 @@ OpenCode provides **18+ built-in tools** registered in `packages/opencode/src/to
 | ------------- | -------------------------- | -------------------------------------- |
 | `read`        | Read file contents         | `filePath`, `offset?`, `limit?`        |
 | `write`       | Create/overwrite files     | `filePath`, `content`                  |
-| `edit`        | Edit file (search/replace) | `filePath`, `old_string`, `new_string` |
-| `bash`        | Execute shell commands     | `command`, `timeout?`                  |
+| `edit`        | Edit file (search/replace) | `filePath`, `oldString`, `newString`, `replaceAll?` |
+| `bash`        | Execute shell commands     | `command`, `workdir?`, `timeout?`, `description`     |
 | `glob`        | Find files by pattern      | `pattern`, `path?`                     |
 | `grep`        | Search file contents       | `pattern`, `path?`, `include?`         |
-| `webfetch`    | Fetch web content          | `url`, `prompt?`                       |
-| `websearch`   | Web search (OpenCode/EXA)  | `query`                                |
+| `webfetch`    | Fetch web content          | `url`, `format?`, `timeout?`           |
+| `websearch`   | Web search (EXA via MCP)   | `query`, `numResults?`, `type?`, `livecrawl?` |
 | `codesearch`  | Code search                | `query`                                |
-| `apply_patch` | Apply unified diffs        | `patch` (used for GPT models)          |
+| `apply_patch` | Apply patch text           | `patchText` (used for GPT models)      |
 
 ### Extended Tools
 
@@ -195,7 +208,7 @@ Client (Browser)                    Server                         OpenAI Realti
       │  { name: "read", arguments }  │                                   │
       │                               │                                   │
       │  POST /session/:id/tool/call  │                                   │
-      │  { toolName, callId, args }   │                                   │
+      │  { toolName, callId, arguments, model, agent? }                   │
       │──────────────────────────────►│                                   │
       │                               │  Find tool by name                │
       │                               │  Execute tool                     │
@@ -222,6 +235,8 @@ Client (Browser)                    Server                         OpenAI Realti
     command?: string
     // ...
   }
+  model: { providerID: string; modelID: string } // Used for tool selection + task subagent inheritance
+  agent?: string                                 // Tool context labeling
 }
 ```
 
@@ -237,7 +252,10 @@ Client (Browser)                    Server                         OpenAI Realti
 
 ### Implementation Details
 
-From `server/routes/session.ts:989-1137`:
+Implementation lives in `SessionTool`:
+
+- [`packages/opencode/src/session/tool.ts`](../../packages/opencode/src/session/tool.ts) (`SessionTool.list()`, `SessionTool.call()`)
+- Route wiring: [`packages/opencode/src/server/routes/session.ts`](../../packages/opencode/src/server/routes/session.ts)
 
 1. **Session validation**: Verifies session exists
 2. **Tool lookup**: Finds tool from `ToolRegistry.tools()`
@@ -295,7 +313,7 @@ Tools require permissions before execution. The permission system is defined in 
 
 3. **Agent permissions** (role-based)
    - "build" - Question and plan tools allowed
-   - "explore" - Only read, grep, glob, bash, web tools
+   - "explore" - Only read/grep/glob/bash/web tools
    - "general" - All except todo tools
 
 ### Permission Flow

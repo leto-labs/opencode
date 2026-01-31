@@ -2,6 +2,21 @@
 
 This document covers setting up Tauri v2 for iOS and Android builds of OpenCode.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Tauri Mobile Architecture](#tauri-mobile-architecture)
+- [Project Structure](#project-structure)
+- [Configuration](#configuration)
+- [Plugin Compatibility](#plugin-compatibility)
+- [Platform Implementation](#platform-implementation)
+- [Build Commands](#build-commands)
+- [iOS-Specific Setup](#ios-specific-setup)
+- [Android-Specific Setup](#android-specific-setup)
+- [Known Limitations](#known-limitations)
+- [Testing](#testing)
+- [Resources](#resources)
+
 ## Overview
 
 Tauri v2 introduced official mobile support, allowing the same Rust + WebView architecture to work on iOS and Android. The existing OpenCode desktop codebase already has mobile-ready infrastructure:
@@ -30,100 +45,35 @@ pub fn run() {
 
 ## Project Structure
 
+> This repo does not have a separate `packages/mobile/` package. Mobile builds are produced from `packages/desktop/` (Tauri v2).
+
 ```
-packages/mobile/
-├── src/                          # Frontend (shared with desktop)
-│   ├── index.tsx                 # Mobile entry point
-│   ├── platform.ts               # Mobile platform implementation
-│   └── voice/                    # Voice-specific components
-├── src-tauri/
-│   ├── src/
-│   │   ├── lib.rs                # Core mobile app
-│   │   ├── voice.rs              # Voice capture/playback
-│   │   └── connection.rs         # Remote server connection
-│   ├── Cargo.toml
-│   ├── tauri.conf.json
-│   ├── capabilities/
-│   │   └── mobile.json           # Mobile-specific permissions
-│   ├── gen/
-│   │   ├── android/              # Generated Android project
-│   │   └── apple/                # Generated iOS project
-├── index.html
+packages/desktop/
+├── src/                          # Frontend entry point (desktop + mobile WebView)
 ├── vite.config.ts
-└── package.json
+└── src-tauri/
+    ├── src/                      # Rust backend + Tauri commands
+    ├── Cargo.toml
+    ├── build.rs
+    ├── tauri.conf.json           # Dev config
+    ├── tauri.prod.conf.json      # Prod config
+    ├── capabilities/
+    │   └── default.json
+    ├── plugins/
+    │   └── foreground-service/   # Android foreground service plugin (mobile only)
+    └── gen/
+        ├── android/              # Generated Android project (Gradle)
+        └── apple/                # Generated iOS project (Xcode)
 ```
 
 ## Configuration
 
-### tauri.conf.json
+Key files:
 
-```json
-{
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OpenCode",
-  "identifier": "ai.opencode.mobile",
-  "version": "0.1.0",
-  "build": {
-    "beforeDevCommand": "bun run dev",
-    "devUrl": "http://localhost:1421",
-    "beforeBuildCommand": "bun run build",
-    "frontendDist": "../dist"
-  },
-  "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "OpenCode",
-        "fullscreen": false
-      }
-    ],
-    "security": {
-      "csp": null
-    }
-  },
-  "bundle": {
-    "active": true,
-    "iOS": {
-      "developmentTeam": "TEAM_ID",
-      "minimumSystemVersion": "14.0"
-    },
-    "android": {
-      "minSdkVersion": 24
-    }
-  }
-}
-```
-
-### Cargo.toml
-
-```toml
-[package]
-name = "opencode-mobile"
-version = "0.1.0"
-edition = "2024"
-
-[lib]
-name = "opencode_mobile_lib"
-crate-type = ["lib", "cdylib", "staticlib"]
-
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
-
-[dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-http = "2"
-tauri-plugin-notification = "2"
-tauri-plugin-store = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
-# Mobile-specific
-[target.'cfg(target_os = "ios")'.dependencies]
-# iOS-specific dependencies
-
-[target.'cfg(target_os = "android")'.dependencies]
-# Android-specific dependencies
-```
+- [`packages/desktop/src-tauri/tauri.conf.json`](../../packages/desktop/src-tauri/tauri.conf.json) (dev)
+- [`packages/desktop/src-tauri/tauri.prod.conf.json`](../../packages/desktop/src-tauri/tauri.prod.conf.json) (prod)
+- [`packages/desktop/src-tauri/Cargo.toml`](../../packages/desktop/src-tauri/Cargo.toml)
+- [`packages/desktop/src-tauri/build.rs`](../../packages/desktop/src-tauri/build.rs) (build-time env injection)
 
 ## Plugin Compatibility
 
@@ -140,47 +90,10 @@ serde_json = "1"
 
 ## Platform Implementation
 
-The mobile platform implementation needs to provide alternatives for desktop-specific features:
+Mobile does not spawn a local sidecar server; it connects to a remote OpenCode server.
 
-```typescript
-// packages/mobile/src/platform.ts
-import { Platform } from "@opencode-ai/app"
-
-export const mobilePlatform: Platform = {
-  platform: "mobile",
-  os: "ios", // or "android" - detected at runtime
-
-  // Remote server connection instead of local sidecar
-  async getServerUrl(): Promise<string> {
-    const stored = await store.get("server_url")
-    return stored || promptForServerUrl()
-  },
-
-  // Voice-specific methods (to be implemented)
-  voice: {
-    startCapture: () => {
-      /* ... */
-    },
-    stopCapture: () => {
-      /* ... */
-    },
-    playAudio: (data: ArrayBuffer) => {
-      /* ... */
-    },
-  },
-
-  // Standard platform methods
-  openLink: (url) => {
-    /* ... */
-  },
-  showNotification: (title, body) => {
-    /* ... */
-  },
-  fetch: (url, options) => {
-    /* ... */
-  },
-}
-```
+- Build-time configuration (Android): see [`ANDROID_BUILD.md`](./ANDROID_BUILD.md) (`OPENCODE_SERVER_URL`, `OPENCODE_SERVER_PASSWORD`, etc.)
+- Dev-time defaults: `TAURI_DEV_HOST` (physical device) or `10.0.2.2` (Android emulator), see [`MOBILE_SETUP.md`](../MOBILE_SETUP.md)
 
 ## Build Commands
 
@@ -188,23 +101,28 @@ export const mobilePlatform: Platform = {
 
 ```bash
 # iOS Simulator
-cargo tauri ios dev
+cd packages/desktop
+bun run tauri ios dev
 
 # Android Emulator
-cargo tauri android dev
+cd packages/desktop
+bun run tauri android dev
 
 # Specific iOS device
-cargo tauri ios dev --device "iPhone 15 Pro"
+cd packages/desktop
+bun run tauri ios dev --device "iPhone 15 Pro"
 ```
 
 ### Production Build
 
 ```bash
 # iOS (requires signing)
-cargo tauri ios build --release
+cd packages/desktop
+bun run tauri ios build --release
 
 # Android (requires signing)
-cargo tauri android build --release
+cd packages/desktop
+bun run tauri android build --release
 ```
 
 ## iOS-Specific Setup
@@ -212,7 +130,8 @@ cargo tauri android build --release
 ### 1. Initialize iOS Project
 
 ```bash
-cargo tauri ios init
+cd packages/desktop
+bun run tauri ios init
 ```
 
 This generates `src-tauri/gen/apple/` with:
@@ -255,7 +174,8 @@ Configure in Xcode or via `tauri.conf.json`:
 ### 1. Initialize Android Project
 
 ```bash
-cargo tauri android init
+cd packages/desktop
+bun run tauri android init
 ```
 
 This generates `src-tauri/gen/android/` with:
@@ -318,8 +238,8 @@ xcrun simctl list devices
 emulator -list-avds
 
 # Run on specific simulator
-cargo tauri ios dev --device "iPhone 15"
-cargo tauri android dev --device "Pixel_7_API_34"
+bun run tauri ios dev --device "iPhone 15"
+bun run tauri android dev --device "Pixel_7_API_34"
 ```
 
 ### Physical Devices
