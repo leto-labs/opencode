@@ -2,6 +2,13 @@
 
 Quick guide to run and test the OpenCode mobile app on your Android phone.
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Steps to Test on Your Phone](#steps-to-test-on-your-phone)
+- [Troubleshooting](#troubleshooting)
+- [See Also](#see-also)
+
 ## Prerequisites
 
 - **Rust**: Install from [rustup.rs](https://rustup.rs/)
@@ -44,7 +51,7 @@ bun install
 
 ```bash
 cd packages/desktop
-bun tauri android dev
+bun run tauri android dev
 ```
 
 That's it! The app will build, install on your phone, and launch automatically.

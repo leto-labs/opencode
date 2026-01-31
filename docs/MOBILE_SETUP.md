@@ -2,11 +2,23 @@
 
 Get OpenCode running on iOS and Android simulators/emulators.
 
+## Table of Contents
+
+- [Status](#status)
+- [Prerequisites](#prerequisites)
+- [iOS Setup](#ios-setup)
+- [Android Setup](#android-setup)
+- [Quick Command Reference](#quick-command-reference)
+- [Key Implementation Details](#key-implementation-details)
+- [Troubleshooting](#troubleshooting)
+- [What's Working](#whats-working)
+
 ## Status
 
 - ✅ iOS & Android text chat fully working
 - ✅ Server connection and UI rendering
-- ⏸️ Voice mode (native plugins exist but not connected to OpenAI)
+- ✅ Voice mode (OpenAI Realtime via WebRTC in the WebView)
+- 🔶 Background voice (Android foreground service integration exists, but WebView/WebRTC background behavior is device-dependent)
 
 **Architecture**: Mobile uses `packages/desktop/` (not `packages/app/`). Desktop spawns local server, mobile connects to remote server.
 
@@ -215,5 +227,6 @@ bun run tauri android dev
 ## What's Working
 
 ✅ Text chat, UI rendering, project selection, server connection
-⏸️ Voice mode (native plugins exist but not connected to OpenAI)
-❌ Background audio, lock screen controls
+✅ Voice mode (mic permission + WebRTC session + transcript persistence)
+🔶 Background voice on Android (foreground service helps keep the process alive; see `docs/mobile/ANDROID_FOREGROUND_SERVICE.md`)
+❌ Lock screen controls (not implemented)

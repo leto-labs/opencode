@@ -2,25 +2,63 @@
 
 This document summarizes the OpenAI Realtime API as used in opencode.
 
+## Table of Contents
+
+- [Connection](#connection)
+- [Audio Format](#audio-format)
+- [Session Configuration](#session-configuration)
+- [SDK Events](#sdk-events)
+- [Client → Server Events](#client--server-events)
+- [Raw Event Types](#raw-event-types)
+- [Server Events (via SDK's `*` handler)](#server-events-via-sdks--handler)
+- [Pricing (snapshot)](#pricing-snapshot)
+- [Error Handling](#error-handling)
+- [References](#references)
+
 ## Connection
 
-**Endpoint**: `wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview`
+OpenCode uses **WebRTC** via OpenAI’s Agents SDK, backed by OpenAI’s Realtime API. Ephemeral keys are created server-side via:
+
+- [`packages/opencode/src/session/client_secret.ts`](../../packages/opencode/src/session/client_secret.ts) (calls `POST https://api.openai.com/v1/realtime/client_secrets`)
+- Exposed as `POST /session/:id/client_secret` + `GET /session/:id/client_secret` in [`packages/opencode/src/server/routes/session.ts`](../../packages/opencode/src/server/routes/session.ts)
 
 **With SDK**:
 
 ```typescript
-import { OpenAIRealtimeWebSocket } from "@openai/agents-realtime"
+import { RealtimeSession, RealtimeAgent, OpenAIRealtimeWebRTC } from "@openai/agents/realtime"
 
-const transport = new OpenAIRealtimeWebSocket({
-  apiKey: "sk-..." or "ek-...",
-  model: "gpt-4o-realtime-preview",
-  useInsecureApiKey: true, // Required for non-ephemeral keys
+// Provide an <audio> element for playback
+const audioElement = document.createElement("audio")
+audioElement.autoplay = true
+document.body.appendChild(audioElement)
+
+const agent = new RealtimeAgent({
+  name: "OpenCode",
+  instructions: "You are a helpful assistant.",
+  tools: [],
 })
 
-await transport.connect({
-  initialSessionConfig: { ... }
+const transport = new OpenAIRealtimeWebRTC({ audioElement })
+
+const session = new RealtimeSession(agent, {
+  transport,
+  model: "gpt-realtime",
+  config: {
+    outputModalities: ["audio"],
+    audio: {
+      input: {
+        transcription: { model: "gpt-4o-transcribe" },
+        turnDetection: { type: "semantic_vad", eagerness: "medium" },
+      },
+      output: { voice: "cedar", speed: 1.0 },
+    },
+  },
 })
+
+await session.connect({ apiKey: "ek_..." })
 ```
+
+> Note: WebSocket transports exist, but OpenCode’s current implementation is WebRTC-first (see [`packages/app/src/hooks/use-realtime-connection.ts`](../../packages/app/src/hooks/use-realtime-connection.ts)).
 
 ## Audio Format
 
@@ -36,7 +74,9 @@ Also supported: G.711 (µ-law and A-law) for telephony.
 Sent via `session.update` after connection:
 
 ```typescript
-// GA format (new)
+// Wire format (snake_case) shown for reference.
+// In this repo we mostly configure via the Agents SDK (camelCase), see:
+// - packages/app/src/hooks/use-realtime-connection.ts
 {
   type: "realtime",
   output_modalities: ["text", "audio"],
@@ -108,7 +148,7 @@ Sent via `session.update` after connection:
 
 ## SDK Events
 
-The `@openai/agents-realtime` SDK provides typed events:
+The OpenAI Agents SDK (`@openai/agents/realtime`) provides typed events (and OpenCode primarily listens via `RealtimeSession` events like `transport_event`).
 
 ### Connection Events
 
@@ -288,7 +328,9 @@ Then trigger continuation:
 }
 ```
 
-## Pricing (2025)
+## Pricing (snapshot)
+
+This section is a historical estimate from when the feature was built. Always confirm pricing in the official OpenAI docs before relying on it for product decisions.
 
 | Type         | Cost                                |
 | ------------ | ----------------------------------- |

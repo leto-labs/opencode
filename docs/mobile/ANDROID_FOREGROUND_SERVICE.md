@@ -4,6 +4,20 @@ The `foreground-service` Tauri plugin provides an Android foreground service to 
 
 > **Status: Active.** The plugin is initialized in `lib.rs` and the `startService`/`stopService` commands are called from the frontend when voice mode connects/disconnects. Voice audio is handled entirely by WebRTC inside the WebView (see [VOICE_BACKGROUND_AUDIO.md](./VOICE_BACKGROUND_AUDIO.md)).
 
+## Table of Contents
+
+- [What It Does](#what-it-does)
+- [Integration Flow](#integration-flow)
+- [File Structure](#file-structure)
+- [Commands](#commands)
+- [Plugin Initialization](#plugin-initialization)
+- [Android Permissions](#android-permissions)
+- [Debugging](#debugging)
+- [Android Version Compatibility](#android-version-compatibility)
+- [Known Limitations](#known-limitations)
+- [Key Files](#key-files)
+- [References](#references)
+
 ## What It Does
 
 When a voice session starts, the frontend invokes `plugin:foreground-service|startService`. This starts an Android foreground service that:
@@ -43,7 +57,7 @@ Voice mode disconnect() / cleanup()
 ## File Structure
 
 ```
-plugins/foreground-service/
+packages/desktop/src-tauri/plugins/foreground-service/
 |-- Cargo.toml                 # Rust crate (tauri-plugin-foreground-service)
 |-- build.rs                   # Tauri plugin builder (registers commands)
 |-- src/
@@ -184,9 +198,9 @@ Start a voice session on the phone. If the foreground service starts, you'll see
 | `packages/app/src/hooks/use-realtime-connection.ts`                 | Frontend: calls startService/stopService              |
 | `packages/desktop/src-tauri/src/lib.rs`                             | Plugin initialization (`#[cfg(mobile)]`)              |
 | `packages/desktop/src-tauri/capabilities/default.json`              | Permission grants for startService/stopService        |
-| `plugins/foreground-service/src/lib.rs`                             | Rust plugin API                                       |
-| `plugins/foreground-service/android/.../ForegroundServicePlugin.kt` | Kotlin: startService/stopService commands             |
-| `plugins/foreground-service/android/.../ForegroundService.kt`       | Kotlin: foreground service + notification + wake lock |
+| `packages/desktop/src-tauri/plugins/foreground-service/src/lib.rs`                             | Rust plugin API                                       |
+| `packages/desktop/src-tauri/plugins/foreground-service/android/.../ForegroundServicePlugin.kt` | Kotlin: startService/stopService commands             |
+| `packages/desktop/src-tauri/plugins/foreground-service/android/.../ForegroundService.kt`       | Kotlin: foreground service + notification + wake lock |
 
 ## References
 

@@ -2,6 +2,17 @@
 
 This document explains the context and state management patterns used in the OpenCode frontend, designed for developers familiar with React transitioning to SolidJS.
 
+## Table of Contents
+
+- [SolidJS vs React: Key Differences](#solidjs-vs-react-key-differences)
+- [Context Pattern: `createSimpleContext`](#context-pattern-createsimplecontext)
+- [Provider Hierarchy](#provider-hierarchy)
+- [Context Categories](#context-categories)
+- [Choosing the Right Pattern](#choosing-the-right-pattern)
+- [Common Patterns](#common-patterns)
+- [VoiceMode Refactoring Decision](#voicemode-refactoring-decision)
+- [Summary](#summary)
+
 ## SolidJS vs React: Key Differences
 
 ### Reactivity Model

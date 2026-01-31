@@ -2,6 +2,16 @@
 
 Detailed breakdown of all packages in the OpenCode monorepo.
 
+## Table of Contents
+
+- [Core Packages](#core-packages)
+- [Frontend Packages](#frontend-packages)
+- [Integration Packages](#integration-packages)
+- [Utility Packages](#utility-packages)
+- [Enterprise Packages](#enterprise-packages)
+- [Build & Script Packages](#build--script-packages)
+- [Package Dependency Graph](#package-dependency-graph)
+
 ## Core Packages
 
 ### packages/opencode
@@ -214,13 +224,8 @@ const result = await client.session.prompt({ sessionID, parts: [...] })
 #### Regeneration
 
 ```bash
-# 1. Extract OpenAPI spec from server
-cd packages/opencode
-bun dev generate
-
-# 2. Generate TypeScript client
-cd packages/sdk/js
-bun run build
+# Recommended (regenerates the JS SDK from OpenAPI)
+bun ./packages/sdk/js/script/build.ts
 ```
 
 ---

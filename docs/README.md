@@ -1,285 +1,140 @@
-# OpenCode Developer Documentation
+# OpenCode Developer Docs (`docs/`)
 
-This documentation is for developers working on OpenCode itself. For user documentation, see [opencode.ai/docs](https://opencode.ai/docs).
+Developer-facing documentation for working on OpenCode itself. For user documentation, see [opencode.ai/docs](https://opencode.ai/docs).
 
-## Quick Start
+## Table of Contents
+
+- [Quick start](#quick-start)
+- [Docs map](#docs-map)
+- [Key concepts](#key-concepts)
+  - [Inference modes](#inference-modes)
+  - [Voice mode (OpenAI Realtime)](#voice-mode-openai-realtime)
+  - [Tools + permissions](#tools--permissions)
+- [Monorepo map](#monorepo-map)
+- [Common developer tasks](#common-developer-tasks)
+  - [Regenerate the TypeScript SDK](#regenerate-the-typescript-sdk)
+  - [Add a new API route](#add-a-new-api-route)
+- [Key source entry points](#key-source-entry-points)
+
+## Quick start
 
 ```bash
-# Install dependencies
+# Install dependencies (repo root)
 bun install
 
-# Start the server (required for both TUI and web)
+# Terminal 1: start the backend server
 cd packages/opencode
 bun run --conditions=browser ./src/index.ts serve --port 4096
 
-# Start web UI (in another terminal)
+# Terminal 2: start the web app
 cd packages/app
-bun dev
+bun dev -- --port 4444
 ```
 
-## Project Overview
+- Web UI: `http://localhost:4444`
+- API server: `http://localhost:4096` (OpenAPI docs at `http://localhost:4096/doc`)
 
-OpenCode is an open-source AI coding agent with a modular client/server architecture. The project supports multiple frontends (TUI, Web, Desktop) and multiple LLM providers.
+## Docs map
 
-**Key Technologies:**
+- **Architecture** (server, SDK generation, tools, storage): [`docs/architecture/README.md`](./architecture/README.md)
+- **Realtime voice** (OpenAI Realtime, WebRTC, transcripts, voice-safe tools): [`docs/realtime/README.md`](./realtime/README.md)
+- **Mobile** (Android/iOS via Tauri v2):
+  - Setup: [`docs/MOBILE_SETUP.md`](./MOBILE_SETUP.md)
+  - Index: [`docs/mobile/README.md`](./mobile/README.md)
+- **Headless server deployment**: [`docs/server/README.md`](./server/README.md)
 
-- Runtime: Bun v1.2.12+
-- Server: Hono (with OpenAPI)
-- Client: SolidJS
-- Desktop: Tauri v2
-- Package Manager: Bun workspaces
+## Key concepts
 
-## Monorepo Structure
+### Inference modes
+
+OpenCode has two inference modes:
+
+- **Server-side inference (traditional)**: client sends a message → server calls an LLM → server executes tools → server streams updates (SSE).
+  - Primary API: `POST /session/:id/message`
+  - Deep dive: [`docs/architecture/message-flow.md`](./architecture/message-flow.md)
+
+- **Client-side inference (voice/realtime)**: client connects directly to OpenAI Realtime over WebRTC → server is used async for **ephemeral keys**, **tools**, and **transcript persistence**.
+  - APIs:
+    - `POST /session/:id/client_secret` / `GET /session/:id/client_secret`
+    - `GET /session/:id/tools`
+    - `POST /session/:id/tool/call`
+    - `POST /session/:id/transcript`
+    - `GET /session/:id/system_prompt`
+  - Deep dive: [`docs/realtime/architecture.md`](./realtime/architecture.md)
+
+### Voice mode (OpenAI Realtime)
+
+Voice mode is a **call state**, not a “model” in the picker:
+
+- You keep a normal **text model** selected (used for standard chat, and for `task` subagents).
+- When you start a call (phone icon in the prompt bar), the client opens a **WebRTC** connection to OpenAI Realtime and persists transcripts back to the server.
+
+Key files:
+
+- Client:
+  - [`packages/app/src/context/voice-mode.tsx`](../packages/app/src/context/voice-mode.tsx)
+  - [`packages/app/src/hooks/use-realtime-connection.ts`](../packages/app/src/hooks/use-realtime-connection.ts)
+  - [`packages/app/src/util/openai-realtime-tool.ts`](../packages/app/src/util/openai-realtime-tool.ts)
+- Server:
+  - [`packages/opencode/src/session/client_secret.ts`](../packages/opencode/src/session/client_secret.ts)
+  - [`packages/opencode/src/session/tool.ts`](../packages/opencode/src/session/tool.ts)
+  - [`packages/opencode/src/session/transcript.ts`](../packages/opencode/src/session/transcript.ts)
+  - [`packages/opencode/src/server/routes/session.ts`](../packages/opencode/src/server/routes/session.ts)
+
+### Tools + permissions
+
+- Tool registry: [`packages/opencode/src/tool/registry.ts`](../packages/opencode/src/tool/registry.ts)
+- Voice mode tool set (bounded on purpose): `glob`, `grep`, `task` (see `SessionTool.VOICE_MODE_TOOLS` in [`packages/opencode/src/session/tool.ts`](../packages/opencode/src/session/tool.ts)).
+- Permissions are enforced in the server-side agent loop; the client-side `POST /session/:id/tool/call` endpoint currently bypasses interactive permission prompts (its `ctx.ask` is a no-op).
+
+Deep dive: [`docs/architecture/tool-flow.md`](./architecture/tool-flow.md) and [`docs/architecture/tool-permissions.md`](./architecture/tool-permissions.md)
+
+## Monorepo map
 
 ```
 packages/
 ├── opencode/       # Core server, CLI, and agent logic
 ├── app/            # Web UI (SolidJS + Vite)
-├── desktop/        # Native desktop app (Tauri)
-├── sdk/js/         # Type-safe TypeScript SDK
+├── desktop/        # Native desktop + mobile app (Tauri v2)
+├── sdk/js/         # Type-safe TypeScript SDK (generated)
 ├── ui/             # Shared component library
 ├── util/           # Shared utilities
 ├── plugin/         # Plugin SDK for extensions
 ├── slack/          # Slack bot integration
 ├── extensions/     # IDE extensions (Zed, etc.)
-├── web/            # Documentation site (Astro)
+├── web/            # Marketing/docs site (Astro)
 ├── console/        # Enterprise admin dashboard
-├── docs/           # Markdown documentation content
-├── enterprise/     # Enterprise features
-├── script/         # Build scripts
-├── function/       # Function utilities
-└── identity/       # Authentication utilities
+├── docs/           # User-docs content (MDX, OpenAPI, etc.)
+└── ...
 ```
 
-## Core Packages
+> This folder (`docs/`) is the *developer* markdown docs. `packages/docs/` and `packages/web/` are for the public docs site.
 
-### packages/opencode - Server & CLI
+## Common developer tasks
 
-The main package containing the HTTP server, CLI tool, and agent implementation.
+### Regenerate the TypeScript SDK
 
-```
-packages/opencode/src/
-├── server/         # Hono HTTP server
-│   └── routes/     # API endpoints (session, file, pty, mcp, etc.)
-├── session/        # Session & message management
-│   ├── index.ts    # Session CRUD
-│   ├── prompt.ts   # Agent loop (LLM calls + tool execution)
-│   ├── transcript.ts # Client-side inference persistence
-│   └── message-v2.ts # Message/Part schemas
-├── agent/          # Agent configuration & prompts
-├── provider/       # LLM provider integration (OpenAI, Claude, etc.)
-├── tool/           # Tool execution engine
-├── cli/            # Command-line interface
-├── mcp/            # Model Context Protocol support
-├── skill/          # Skill/plugin system
-└── ...             # Other modules (auth, storage, lsp, etc.)
-```
-
-**Key Entry Points:**
-
-- CLI: `./bin/opencode` (yargs commands)
-- Server: `./src/server/server.ts` (Hono app)
-- Agent Loop: `./src/session/prompt.ts:loop()` (line 258+)
-
-See [architecture/packages.md](architecture/packages.md) for detailed breakdown.
-
-### packages/app - Web UI
-
-SolidJS-based web frontend with real-time updates via SSE.
-
-```
-packages/app/src/
-├── components/     # UI components
-│   └── prompt-input.tsx  # Main message input
-├── context/        # State management
-│   ├── global-sdk.tsx    # SDK client
-│   ├── global-sync.tsx   # SSE sync with server
-│   └── voice-mode.tsx    # Realtime voice client
-├── pages/          # Route pages
-└── hooks/          # Custom hooks
-```
-
-### packages/sdk/js - TypeScript SDK
-
-Auto-generated type-safe client for the OpenCode API.
-
-```
-packages/sdk/js/src/
-├── v2/             # Current SDK version
-│   ├── gen/        # Auto-generated from OpenAPI
-│   │   ├── sdk.gen.ts    # API methods
-│   │   └── types.gen.ts  # TypeScript types
-│   └── client.ts   # Client factory
-└── index.ts        # Exports
-```
-
-**Usage:**
-
-```typescript
-import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
-
-const client = createOpencodeClient({ baseUrl: "http://localhost:4096" })
-const sessions = await client.session.list()
-```
-
-### packages/ui - Component Library
-
-Shared SolidJS components used by web and desktop apps.
-
-```
-packages/ui/src/
-├── components/     # 50+ reusable components
-├── theme/          # Theme system
-├── styles/         # Tailwind configuration
-└── assets/         # Icons, fonts, audio
-```
-
-## Architecture Patterns
-
-### 1. Generated SDK
-
-Routes define their API contract using Hono + OpenAPI. The SDK is auto-generated.
-
-```typescript
-// packages/opencode/src/server/routes/session.ts
-.post(
-  "/:sessionID/transcript",
-  describeRoute({
-    summary: "Add transcript",
-    operationId: "session.transcript.add",  // -> client.session.transcriptAdd()
-    responses: { 200: { schema: resolver(SessionTranscript.AddOutput) } }
-  }),
-  validator("json", SessionTranscript.AddInput.omit({ sessionID: true })),
-  async (c) => { /* ... */ }
-)
-```
-
-Regenerate SDK after route changes:
+Routes define their API contract using Hono + OpenAPI; the SDK is generated from the OpenAPI spec.
 
 ```bash
-cd packages/opencode && bun dev generate
-cd packages/sdk/js && bun run build
+# Repo root
+bun ./packages/sdk/js/script/build.ts
 ```
 
-See [architecture/adding-routes.md](architecture/adding-routes.md) for full guide.
+Key file: [`packages/sdk/js/script/build.ts`](../packages/sdk/js/script/build.ts)
 
-### 2. Two Inference Modes
+### Add a new API route
 
-**Server-Side (Traditional):**
+Use this guide: [`docs/architecture/adding-routes.md`](./architecture/adding-routes.md)
 
-```
-Client → POST /session/:id/message → Server → LLM → Tool Calls → Response (SSE)
-```
+## Key source entry points
 
-**Client-Side (Realtime/Voice):**
-
-```
-Client → OpenAI Realtime API (direct) → Audio Response
-         ↓ async
-         POST /session/:id/transcript → Server (persistence only)
-```
-
-See [architecture/message-flow.md](architecture/message-flow.md) for details.
-
-### 3. Namespace Pattern
-
-Business logic lives in namespaces under `src/session/`, `src/agent/`, etc. Routes are thin wrappers.
-
-```typescript
-// src/session/transcript.ts
-export namespace SessionTranscript {
-  export const AddInput = z.object({ ... })
-  export const AddOutput = z.object({ ... })
-  export const add = fn(AddInput, async (input) => { ... })
-}
-
-// src/server/routes/session.ts
-validator("json", SessionTranscript.AddInput)
-const result = await SessionTranscript.add(body)
-```
-
-### 4. SSE Real-Time Updates
-
-Server pushes events to clients via Server-Sent Events:
-
-```typescript
-// Server emits
-Bus.publish(MessageV2.Event.Updated, { info })
-Bus.publish(MessageV2.Event.PartUpdated, { part })
-
-// Client receives via SSE
-const events = client.session.subscribe({ sessionID })
-for await (const event of events) {
-  // Update UI
-}
-```
-
-**Important:** Include `x-opencode-directory` header for proper event routing.
-
-### 5. Optimistic Updates
-
-Client generates IDs before sending to server to prevent duplicates:
-
-```typescript
-const messageID = Identifier.ascending("message")
-await client.session.transcript.add({ sessionID, messageID, ... })
-// Server uses client's ID instead of generating new one
-```
-
-See [architecture/message-flow.md](architecture/message-flow.md#optimistic-updates).
-
-## Development Workflow
-
-### Running Tests
-
-```bash
-# Unit tests (opencode)
-cd packages/opencode && bun test
-
-# Specific test file
-bun test test/session/transcript.test.ts
-
-# E2E tests (app)
-cd packages/app && bun run test:e2e:local
-```
-
-### Adding a New Feature
-
-1. **Define types** in relevant namespace (`src/session/*.ts`, etc.)
-2. **Add route** in `src/server/routes/*.ts` with OpenAPI annotations
-3. **Regenerate SDK** (`bun dev generate && cd ../sdk/js && bun run build`)
-4. **Update UI** in `packages/app/src/`
-5. **Add tests** in `test/` directory
-
-### Key Files to Know
-
-| What            | Where                                         |
-| --------------- | --------------------------------------------- |
-| Server routes   | `packages/opencode/src/server/routes/`        |
-| Agent loop      | `packages/opencode/src/session/prompt.ts:258` |
-| Message schemas | `packages/opencode/src/session/message-v2.ts` |
-| Session CRUD    | `packages/opencode/src/session/index.ts`      |
-| SDK client      | `packages/sdk/js/src/v2/client.ts`            |
-| UI state        | `packages/app/src/context/`                   |
-| Voice mode      | `packages/app/src/context/voice-mode.tsx`     |
-
-## Documentation Index
-
-### Architecture
-
-- [packages.md](architecture/packages.md) - Detailed package breakdown
-- [patterns.md](architecture/patterns.md) - Architecture patterns & conventions
-- [message-flow.md](architecture/message-flow.md) - Message flow & inference modes
-- [adding-routes.md](architecture/adding-routes.md) - How to add API endpoints
-- [tool-flow.md](architecture/tool-flow.md) - Tool execution flow
-
-### Features
-
-- [realtime/](realtime/) - Voice/Realtime integration docs
-  - [README.md](realtime/README.md) - Overview
-  - [architecture.md](realtime/architecture.md) - Realtime system design
-  - [PHASE-\*.md](realtime/) - Implementation phases
-
-## Contributing
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for contribution guidelines.
+| Area | File |
+| --- | --- |
+| Server bootstrap | [`packages/opencode/src/server/server.ts`](../packages/opencode/src/server/server.ts) |
+| Session routes | [`packages/opencode/src/server/routes/session.ts`](../packages/opencode/src/server/routes/session.ts) |
+| Agent loop (server-side inference) | [`packages/opencode/src/session/prompt.ts`](../packages/opencode/src/session/prompt.ts) |
+| Client-side transcript persistence | [`packages/opencode/src/session/transcript.ts`](../packages/opencode/src/session/transcript.ts) |
+| Client-side tool execution | [`packages/opencode/src/session/tool.ts`](../packages/opencode/src/session/tool.ts) |
+| Web app prompt UI | [`packages/app/src/components/prompt-input.tsx`](../packages/app/src/components/prompt-input.tsx) |
+| Voice mode (client) | [`packages/app/src/context/voice-mode.tsx`](../packages/app/src/context/voice-mode.tsx) |

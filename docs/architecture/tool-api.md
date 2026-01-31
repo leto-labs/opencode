@@ -2,6 +2,17 @@
 
 Detailed API documentation for OpenCode tools, including parameters, response formats, and usage examples.
 
+## Table of Contents
+
+- [API Endpoints](#api-endpoints)
+- [Core Tools](#core-tools)
+- [Extended Tools](#extended-tools)
+- [Error Handling](#error-handling)
+- [Output Truncation](#output-truncation)
+- [File Attachments](#file-attachments)
+- [Tool Context Reference](#tool-context-reference)
+- [See Also](#see-also)
+
 ## API Endpoints
 
 ### Execute Tool (Session-Based)
@@ -12,10 +23,16 @@ POST /session/{sessionID}/tool/call
 
 Execute a tool within the context of an existing session.
 
+Implementation:
+
+- Route: [`packages/opencode/src/server/routes/session.ts`](../../packages/opencode/src/server/routes/session.ts)
+- Handler: [`packages/opencode/src/session/tool.ts`](../../packages/opencode/src/session/tool.ts)
+
 **Request Headers:**
 
 ```
 Content-Type: application/json
+x-opencode-directory: /absolute/path/to/project
 ```
 
 **Request Body:**
@@ -25,6 +42,8 @@ Content-Type: application/json
   toolName: string // Tool identifier
   callId: string // Unique call ID for correlation
   arguments: Record<string, any> // Tool-specific parameters
+  model: { providerID: string; modelID: string } // Required (used for tool selection + task subagent inheritance)
+  agent?: string // Optional label for tool context
 }
 ```
 
@@ -50,6 +69,8 @@ Content-Type: application/json
 ### read
 
 Read file contents with optional line range.
+
+Implementation: [`packages/opencode/src/tool/read.ts`](../../packages/opencode/src/tool/read.ts)
 
 **Parameters:**
 
@@ -105,6 +126,8 @@ Read file contents with optional line range.
 
 Create or overwrite a file.
 
+Implementation: [`packages/opencode/src/tool/write.ts`](../../packages/opencode/src/tool/write.ts)
+
 **Parameters:**
 
 ```typescript
@@ -119,19 +142,20 @@ Create or overwrite a file.
 ```typescript
 {
   title: string // Relative path
-  output: string // Success message
+  output: string // Success message (+ optional LSP diagnostics block)
   metadata: {
-    path: string // Absolute path
-    created: boolean // Whether file was created (vs overwritten)
+    filepath: string // Absolute path
+    exists: boolean // Whether the file existed before the write
+    diagnostics: Record<string, unknown> // LSP diagnostics map (normalized path -> issues)
   }
 }
 ```
 
 **Behavior:**
 
-- Creates parent directories if needed
-- Overwrites existing files without warning
-- Preserves file permissions
+- Overwrites existing files (or creates it if missing)
+- Does not create parent directories (the directory must exist)
+- Runs LSP diagnostics after writing and includes errors in the output when available
 
 ---
 
@@ -139,13 +163,16 @@ Create or overwrite a file.
 
 Edit a file using search/replace.
 
+Implementation: [`packages/opencode/src/tool/edit.ts`](../../packages/opencode/src/tool/edit.ts)
+
 **Parameters:**
 
 ```typescript
 {
-  filePath: string // File to edit
-  old_string: string // Text to find
-  new_string: string // Replacement text
+  filePath: string // File to edit (absolute or relative)
+  oldString: string // Text to replace (can be "" to create/overwrite file)
+  newString: string // Replacement text (must differ from oldString)
+  replaceAll?: boolean // Replace all occurrences (default false)
 }
 ```
 
@@ -154,20 +181,20 @@ Edit a file using search/replace.
 ```typescript
 {
   title: string // Relative path
-  output: string // Success/failure message
+  output: string // Success message (+ optional LSP diagnostics block)
   metadata: {
-    applied: boolean // Whether edit was applied
-    occurrences: number // Number of replacements
+    diff: string // Unified diff
+    filediff: { additions: number; deletions: number; file: string; before: string; after: string }
+    diagnostics: Record<string, unknown> // LSP diagnostics map
   }
 }
 ```
 
 **Behavior:**
 
-- Exact string matching (no regex)
-- Single occurrence replaced per call
-- Error if `old_string` not found
-- Error if multiple occurrences found (must be unique)
+- Uses a best-effort matcher (exact + trimmed + block anchors, etc.) to find a unique replacement location
+- By default requires a unique match; set `replaceAll: true` to replace all occurrences
+- Publishes file update events and runs LSP diagnostics after applying
 
 ---
 
@@ -175,12 +202,16 @@ Edit a file using search/replace.
 
 Execute a shell command.
 
+Implementation: [`packages/opencode/src/tool/bash.ts`](../../packages/opencode/src/tool/bash.ts)
+
 **Parameters:**
 
 ```typescript
 {
   command: string               // Command to execute
-  timeout?: number              // Timeout in ms, default: 30000
+  description: string           // Clear 5–10 word description (used as the tool title)
+  workdir?: string              // Working directory (preferred over `cd`)
+  timeout?: number              // Timeout in ms (default is ~2 minutes, configurable)
 }
 ```
 
@@ -188,12 +219,12 @@ Execute a shell command.
 
 ```typescript
 {
-  title: string                 // Truncated command
+  title: string                 // The provided description
   output: string                // stdout + stderr combined
   metadata: {
-    exitCode: number            // Process exit code
-    signal?: string             // Signal if killed
-    timedOut: boolean           // Whether timeout was hit
+    exit: number | null         // Process exit code (if available)
+    description: string
+    output: string              // Truncated copy for UI metadata
   }
 }
 ```
@@ -207,7 +238,7 @@ Execute a shell command.
 
 **Limits:**
 
-- Default timeout: 30 seconds
+- Default timeout: ~2 minutes (unless overridden via flags/config)
 - Output truncated per standard limits
 
 ---
@@ -215,6 +246,8 @@ Execute a shell command.
 ### glob
 
 Find files matching a pattern.
+
+Implementation: [`packages/opencode/src/tool/glob.ts`](../../packages/opencode/src/tool/glob.ts)
 
 **Parameters:**
 
@@ -229,7 +262,7 @@ Find files matching a pattern.
 
 ```typescript
 {
-  title: string // Pattern searched
+  title: string // Search root (relative to worktree)
   output: string // Matched file paths, one per line
   metadata: {
     count: number // Number of matches
@@ -251,6 +284,8 @@ Find files matching a pattern.
 
 Search file contents.
 
+Implementation: [`packages/opencode/src/tool/grep.ts`](../../packages/opencode/src/tool/grep.ts)
+
 **Parameters:**
 
 ```typescript
@@ -266,10 +301,9 @@ Search file contents.
 ```typescript
 {
   title: string // Search summary
-  output: string // Matching lines with context
+  output: string // Matches grouped by file (bounded)
   metadata: {
-    matchCount: number // Number of matches
-    fileCount: number // Files with matches
+    matches: number // Number of matches returned
     truncated: boolean
   }
 }
@@ -278,15 +312,17 @@ Search file contents.
 **Output Format:**
 
 ```
-path/to/file.ts:42: matching line content
-path/to/file.ts:43: context line
+Found 12 matches
+/abs/path/to/file.ts:
+  Line 42: matching line content
 ```
 
 **Behavior:**
 
 - Uses ripgrep for performance
 - Respects .gitignore
-- Case-insensitive by default
+- Includes hidden files and follows symlinks (but skips some inaccessible paths)
+- Default is case-sensitive (pass a case-insensitive pattern if needed)
 
 ---
 
@@ -294,12 +330,15 @@ path/to/file.ts:43: context line
 
 Fetch and process web content.
 
+Implementation: [`packages/opencode/src/tool/webfetch.ts`](../../packages/opencode/src/tool/webfetch.ts)
+
 **Parameters:**
 
 ```typescript
 {
   url: string                   // URL to fetch
-  prompt?: string               // Processing instruction
+  format?: "text" | "markdown" | "html" // Defaults to "markdown"
+  timeout?: number              // Optional timeout in seconds (max 120)
 }
 ```
 
@@ -308,21 +347,17 @@ Fetch and process web content.
 ```typescript
 {
   title: string // URL fetched
-  output: string // Processed content
-  metadata: {
-    statusCode: number
-    contentType: string
-    contentLength: number
-  }
+  output: string // Returned content (converted when requested)
+  metadata: Record<string, never>
 }
 ```
 
 **Behavior:**
 
-- Converts HTML to markdown
-- Follows redirects
-- Respects robots.txt
-- Timeout: 30 seconds
+- Supports `text`, `markdown`, and `html` return formats
+- Converts HTML → Markdown when `format: "markdown"`
+- Applies a 5MB response size limit
+- Default timeout ~30s (max 120s)
 
 ---
 
@@ -330,11 +365,17 @@ Fetch and process web content.
 
 Search the web.
 
+Implementation: [`packages/opencode/src/tool/websearch.ts`](../../packages/opencode/src/tool/websearch.ts)
+
 **Parameters:**
 
 ```typescript
 {
   query: string // Search query
+  numResults?: number
+  livecrawl?: "fallback" | "preferred"
+  type?: "auto" | "fast" | "deep"
+  contextMaxCharacters?: number
 }
 ```
 
@@ -343,17 +384,41 @@ Search the web.
 ```typescript
 {
   title: string // Query
-  output: string // Search results as markdown
-  metadata: {
-    resultCount: number
-    provider: string // "opencode" | "exa"
-  }
+  output: string // Search results (LLM-ready text)
+  metadata: Record<string, never>
 }
 ```
 
 **Availability:**
 
-- Requires `opencode` provider OR `OPENCODE_ENABLE_EXA` flag
+- Included when `OPENCODE_ENABLE_EXA` is set (or when using the `opencode` provider).
+
+---
+
+### codesearch
+
+Search for API/library context via Exa (MCP). Good for “how do I use X” queries.
+
+Implementation: [`packages/opencode/src/tool/codesearch.ts`](../../packages/opencode/src/tool/codesearch.ts)
+
+**Parameters:**
+
+```typescript
+{
+  query: string
+  tokensNum?: number // Default 5000, min 1000, max 50000
+}
+```
+
+**Response:**
+
+```typescript
+{
+  title: string
+  output: string
+  metadata: Record<string, never>
+}
+```
 
 ---
 
@@ -361,11 +426,13 @@ Search the web.
 
 Apply a unified diff patch (used for GPT models).
 
+Implementation: [`packages/opencode/src/tool/apply_patch.ts`](../../packages/opencode/src/tool/apply_patch.ts)
+
 **Parameters:**
 
 ```typescript
 {
-  patch: string // Unified diff format
+  patchText: string // Patch text (OpenCode patch format)
 }
 ```
 
@@ -376,8 +443,9 @@ Apply a unified diff patch (used for GPT models).
   title: string
   output: string                // Success/failure details
   metadata: {
-    filesModified: string[]
-    hunksApplied: number
+    diff: string
+    files: Array<{ filePath: string; relativePath: string; type: string; diff: string; additions: number; deletions: number }>
+    diagnostics: Record<string, unknown>
   }
 }
 ```
@@ -392,12 +460,16 @@ Apply a unified diff patch (used for GPT models).
 
 Ask the user a question (interactive).
 
+Implementation: [`packages/opencode/src/tool/question.ts`](../../packages/opencode/src/tool/question.ts)
+
 **Parameters:**
 
 ```typescript
 {
-  question: string              // Question text
-  options?: string[]            // Optional choices
+  questions: Array<{
+    question: string
+    // options / type fields depend on Question.Info schema
+  }>
 }
 ```
 
@@ -405,10 +477,10 @@ Ask the user a question (interactive).
 
 ```typescript
 {
-  title: string
-  output: string                // User's answer
+  title: string                 // e.g. "Asked 2 questions"
+  output: string                // Summary string including user answers
   metadata: {
-    selectedOption?: number     // Index if options provided
+    answers: unknown            // Raw answers array (see Question.Answer)
   }
 }
 ```
@@ -421,12 +493,17 @@ Ask the user a question (interactive).
 
 Create a subtask for parallel execution.
 
+Implementation: [`packages/opencode/src/tool/task.ts`](../../packages/opencode/src/tool/task.ts)
+
 **Parameters:**
 
 ```typescript
 {
-  description: string // Task description
-  prompt: string // Task prompt
+  description: string    // Short 3–5 word description
+  prompt: string         // The task for the subagent to perform
+  subagent_type: string  // Which subagent to run (e.g. "explore", "general")
+  session_id?: string    // Continue an existing task session
+  command?: string       // Optional: triggering command
 }
 ```
 
@@ -435,10 +512,11 @@ Create a subtask for parallel execution.
 ```typescript
 {
   title: string
-  output: string // Task result
+  output: string // Final subagent text + <task_metadata> block
   metadata: {
-    taskId: string
-    status: "completed" | "failed"
+    sessionId: string
+    model: { providerID: string; modelID: string }
+    summary: Array<{ id: string; tool: string; state: { status: string; title?: string } }>
   }
 }
 ```
@@ -449,16 +527,18 @@ Create a subtask for parallel execution.
 
 Read the todo list.
 
+Implementation: [`packages/opencode/src/tool/todoread.ts`](../../packages/opencode/src/tool/todoread.ts)
+
 **Parameters:** None
 
 **Response:**
 
 ```typescript
 {
-  title: "Todo List"
-  output: string // Todo items as markdown
+  title: string
+  output: string // JSON (array of todos)
   metadata: {
-    itemCount: number
+    todos: unknown
   }
 }
 ```
@@ -469,11 +549,13 @@ Read the todo list.
 
 Write/update the todo list.
 
+Implementation: [`packages/opencode/src/tool/todowrite.ts`](../../packages/opencode/src/tool/todowrite.ts)
+
 **Parameters:**
 
 ```typescript
 {
-  content: string // New todo content (markdown)
+  todos: unknown[] // Array of Todo.Info objects
 }
 ```
 
@@ -481,10 +563,10 @@ Write/update the todo list.
 
 ```typescript
 {
-  title: "Todo Updated"
-  output: string // Confirmation
+  title: string
+  output: string // JSON (array of todos)
   metadata: {
-    itemCount: number
+    todos: unknown
   }
 }
 ```
@@ -495,12 +577,13 @@ Write/update the todo list.
 
 Load and execute a skill workflow.
 
+Implementation: [`packages/opencode/src/tool/skill.ts`](../../packages/opencode/src/tool/skill.ts)
+
 **Parameters:**
 
 ```typescript
 {
-  skill: string                 // Skill name/path
-  args?: Record<string, any>    // Skill arguments
+  name: string // Skill name from <available_skills>
 }
 ```
 
@@ -511,7 +594,8 @@ Load and execute a skill workflow.
   title: string // Skill name
   output: string // Skill output
   metadata: {
-    skillPath: string
+    name: string
+    dir: string
   }
 }
 ```

@@ -2,6 +2,16 @@
 
 This document explains why we use OpenAI Realtime API over a traditional speech pipeline.
 
+## Table of Contents
+
+- [The Traditional Approach](#the-traditional-approach)
+- [OpenAI Realtime Approach](#openai-realtime-approach)
+- [Comparison](#comparison)
+- [Key Advantages](#key-advantages)
+- [When to Use STT + TTS Instead](#when-to-use-stt--tts-instead)
+- [Cost Comparison](#cost-comparison)
+- [Summary](#summary)
+
 ## The Traditional Approach
 
 ```
@@ -21,7 +31,7 @@ Audio In → [Single Audio-Native Model] → Audio Out
 Total latency: ~300-500ms
 ```
 
-One WebSocket connection, one model, native audio processing.
+One realtime connection (WebRTC in OpenCode), one model, native audio processing.
 
 ## Comparison
 
@@ -31,7 +41,7 @@ One WebSocket connection, one model, native audio processing.
 | **Audio understanding** | Text only (loses tone)             | Native audio processing |
 | **Audio generation**    | TTS from text                      | Native speech synthesis |
 | **Interruption**        | Complex multi-service coordination | Native VAD-based        |
-| **Architecture**        | 3 services, 3 APIs                 | 1 WebSocket             |
+| **Architecture**        | 3 services, 3 APIs                 | 1 realtime connection   |
 | **VAD**                 | Implement yourself                 | Built-in server-side    |
 | **Cost per minute**     | ~$0.15-0.20                        | ~$0.30                  |
 
@@ -144,7 +154,7 @@ Single event, atomic state change
 │   (Audio understanding + LLM + Audio generation)   │
 └─────────────────────────────────────────────────────┘
                         ↑
-                   1 WebSocket
+                   1 WebRTC connection
 
 - 1 connection
 - 1 billing account

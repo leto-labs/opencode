@@ -2,6 +2,13 @@
 
 **Status: PARTIALLY COMPLETE** (Ephemeral keys done in Phase 3)
 
+## Table of Contents
+
+- [PRD](#prd)
+- [Tasks](#tasks)
+- [Token Lifecycle (Current)](#token-lifecycle-current)
+- [Future Enhancements](#future-enhancements)
+
 ## PRD
 
 Production-ready voice mode with proper security, error handling, and UX polish.

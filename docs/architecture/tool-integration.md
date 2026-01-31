@@ -2,6 +2,17 @@
 
 This guide analyzes how to execute OpenCode tools from external agents and whether OpenCode server is a suitable harness for decoupled tool calling.
 
+## Table of Contents
+
+- [Executive Summary](#executive-summary)
+- [Current Integration Options](#current-integration-options)
+- [Proposed: Stateless Tool Execution Endpoint](#proposed-stateless-tool-execution-endpoint)
+- [Comparison: OpenCode Server vs Custom MCP Server](#comparison-opencode-server-vs-custom-mcp-server)
+- [Safeguards Preserved in External Use](#safeguards-preserved-in-external-use)
+- [Example: Minimal MCP Server Wrapper](#example-minimal-mcp-server-wrapper)
+- [Recommendations](#recommendations)
+- [Related Documentation](#related-documentation)
+
 ## Executive Summary
 
 **Question**: Is OpenCode server a good harness for external agent tool calling?
@@ -64,13 +75,19 @@ const session = await sessionRes.json()
 // 2. Execute a tool
 const toolRes = await fetch(`http://localhost:8787/session/${session.id}/tool/call`, {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    "x-opencode-directory": "/absolute/path/to/project",
+  },
   body: JSON.stringify({
     toolName: "read",
     callId: "call-123",
     arguments: {
       filePath: "/path/to/file.ts",
     },
+    // Required: model used for tool selection and task subagent inheritance
+    model: { providerID: "openai", modelID: "gpt-4" },
+    agent: "external",
   }),
 })
 const result = await toolRes.json()
@@ -82,8 +99,11 @@ const result = await toolRes.json()
 For agents running in the same process as OpenCode.
 
 ```typescript
-import { ToolRegistry } from "@opencode/tool/registry"
-import { Tool } from "@opencode/tool/tool"
+// Inside the OpenCode codebase, use:
+// - packages/opencode/src/tool/registry.ts
+// - packages/opencode/src/tool/tool.ts
+import { ToolRegistry } from "../../packages/opencode/src/tool/registry"
+import { Tool } from "../../packages/opencode/src/tool/tool"
 
 // Get all available tools
 const tools = await ToolRegistry.tools(
@@ -359,4 +379,4 @@ Consider adding:
 - [Tool Flow](./tool-flow.md) - How tool calling works internally
 - [Tool Permissions](./tool-permissions.md) - Permission system deep-dive
 - [Tool API Reference](./tool-api.md) - Detailed API documentation
-- [MCP Integration](../mcp/README.md) - Model Context Protocol in OpenCode
+- MCP code: [`packages/opencode/src/mcp/`](../../packages/opencode/src/mcp/)

@@ -2,6 +2,13 @@
 
 **Status: COMPLETE**
 
+## Table of Contents
+
+- [PRD](#prd)
+- [Tasks](#tasks)
+- [Implementation Summary](#implementation-summary)
+- [Key Decisions](#key-decisions)
+
 ## PRD
 
 Add a voice mode button that connects to OpenAI Realtime API via WebRTC. Server provides ephemeral keys to keep the main API key secure.

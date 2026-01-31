@@ -2,6 +2,13 @@
 
 This document describes how messages are processed in OpenCode.
 
+## Table of Contents
+
+- [Two Inference Modes](#two-inference-modes)
+- [Server-Side Inference (Traditional)](#server-side-inference-traditional)
+- [Client-Side Inference (Realtime)](#client-side-inference-realtime)
+- [Related Files](#related-files)
+
 ## Two Inference Modes
 
 OpenCode supports two inference modes:
@@ -219,13 +226,13 @@ Client (Browser)                    Server                         OpenAI Realti
       │  └─────────────────────┘      │                                   │
       │                               │                                   │
       │  POST /session/:id/transcript │                                   │
-      │  { role, text, messageID }    │  ◄── Client passes messageID      │
+      │  { role, messageID, parts }   │  ◄── Client passes messageID      │
       │──────────────────────────────►│                                   │
       │                               │  Use provided messageID           │
       │                               │  Session.updateMessage()          │
       │                               │  ─► SSE: message.updated          │
       │◄──────────────────────────────│      (same messageID = update)    │
-      │  { messageID, partID }        │                                   │
+      │  { info, parts }              │                                   │
       │                               │                                   │
       │  voiceMode.sendText(text)     │                                   │
       │───────────────────────────────────────────────────────────────────►│
@@ -248,14 +255,14 @@ Client (Browser)                    Server                         OpenAI Realti
       │  { transcript: "..." }        │                                   │
       │                               │                                   │
       │  POST /session/:id/transcript │                                   │
-      │  { role: "assistant", text }  │                                   │
+      │  { role: "assistant", parts } │                                   │
       │──────────────────────────────►│                                   │
       │                               │  Session.updateMessage()          │
       │                               │  Session.updatePart()             │
       │                               │  ─► SSE: message.updated          │
       │                               │  ─► SSE: message.part.updated     │
       │◄──────────────────────────────│                                   │
-      │  { messageID, partID }        │                                   │
+      │  { info, parts }              │                                   │
       │                               │                                   │
       │  UI updates via SSE events    │                                   │
 ```
@@ -268,10 +275,10 @@ See [tool-flow.md](./tool-flow.md) for details on how tool calls work in both mo
 
 | Endpoint                       | Purpose                                                                               |
 | ------------------------------ | ------------------------------------------------------------------------------------- |
-| `POST /session/:id/transcript` | Store user/assistant transcript (accepts optional `messageID` for optimistic updates) |
+| `POST /session/:id/transcript` | Store user/assistant transcript (accepts optional `messageID` and per-part `id` fields for optimistic updates) |
 | `POST /session/:id/tool/call`  | Execute tool and return result                                                        |
 
-**Note:** The `/transcript` endpoint accepts optional `messageID` and `partID` parameters. When provided, the server uses these IDs instead of generating new ones, enabling the optimistic update pattern.
+**Note:** The `/transcript` endpoint accepts an optional `messageID` and optional part IDs (`parts[].id`). When provided, the server uses these IDs instead of generating new ones, enabling the optimistic update pattern.
 
 ### Input Types
 
@@ -279,12 +286,12 @@ Client-side inference handles two input types:
 
 | Input     | Source                     | Transcription      | Storage                                              |
 | --------- | -------------------------- | ------------------ | ---------------------------------------------------- |
-| **Text**  | User types in prompt input | Not needed         | `voice-mode.tsx` stores via transcript endpoint      |
+| **Text**  | User types in prompt input | Not needed         | If call is active: `prompt-input.tsx` stores via transcript endpoint |
 | **Voice** | User speaks via microphone | OpenAI transcribes | `voice-mode.tsx` stores when transcription completes |
 
 ### Client-Side Architecture
 
-**Principle:** `voice-mode.tsx` owns ALL transcript management for realtime mode, mirroring how the server-side prompt endpoint owns message handling.
+**Principle:** When a voice call is active, the client routes input to OpenAI Realtime, and persists transcripts back to the server. Typed text is persisted from `prompt-input.tsx`; voice input + assistant output transcripts are persisted from `voice-mode.tsx`.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -297,8 +304,8 @@ Client-side inference handles two input types:
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Client-side Flow (GPT Realtime)                                    │
 │                                                                     │
-│  prompt-input.tsx ──voiceMode.sendText()──► voice-mode.tsx handles  │
-│                                              (storage + send)       │
+│  prompt-input.tsx ──POST /session/:id/transcript──► Server stores   │
+│                 └─voiceMode.sendText()────────────► Realtime        │
 │                                                                     │
 │  [microphone] ────voice input────────────► voice-mode.tsx handles   │
 │                                              (transcription + store)│
@@ -310,10 +317,9 @@ Client-side inference handles two input types:
 
 **Why this design:**
 
-- Single source of truth for realtime transcript management
-- Mirrors server-side pattern where prompt endpoint handles everything
-- `prompt-input.tsx` doesn't need to know about transcript storage details
-- User voice input and text input handled consistently
+- Keeps realtime inference client-side while persisting a unified session transcript server-side
+- Typed text and voice transcripts share the same `/transcript` storage endpoint
+- Heavy work is delegated via `task` to a text subagent (voice-safe tool set)
 
 ### Voice Input Flow
 
@@ -367,9 +373,9 @@ Server ────────────────────────�
 
 | File                             | Purpose                          |
 | -------------------------------- | -------------------------------- |
-| `server/routes/session.ts`       | HTTP route handlers              |
-| `session/prompt.ts`              | Prompt processing and agent loop |
-| `session/message-v2.ts`          | Message and part schemas         |
-| `session/index.ts`               | Session CRUD operations          |
-| `provider/provider.ts`           | Model resolution                 |
-| `app/src/context/voice-mode.tsx` | Client-side realtime handling    |
+| [`packages/opencode/src/server/routes/session.ts`](../../packages/opencode/src/server/routes/session.ts) | HTTP route handlers              |
+| [`packages/opencode/src/session/prompt.ts`](../../packages/opencode/src/session/prompt.ts)              | Prompt processing and agent loop |
+| [`packages/opencode/src/session/message-v2.ts`](../../packages/opencode/src/session/message-v2.ts)      | Message and part schemas         |
+| [`packages/opencode/src/session/index.ts`](../../packages/opencode/src/session/index.ts)                | Session CRUD operations          |
+| [`packages/opencode/src/provider/provider.ts`](../../packages/opencode/src/provider/provider.ts)        | Model resolution                 |
+| [`packages/app/src/context/voice-mode.tsx`](../../packages/app/src/context/voice-mode.tsx)              | Client-side realtime handling    |

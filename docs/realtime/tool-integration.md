@@ -1,279 +1,144 @@
 # Tool Integration for Realtime
 
-## Overview
+How “tool calling” works while a voice call is active (OpenAI Realtime over WebRTC + OpenCode server-side tool execution).
 
-Tools in realtime mode work similarly to text mode, with one key difference: **execution happens on the server** while the voice connection is direct to OpenAI.
+## Table of Contents
 
-```
-┌─────────────────┐                      ┌─────────────────┐
-│   Web Client    │ ←── function_call ── │  OpenAI Realtime│
-│                 │                      │                 │
-│  1. Receive     │                      │                 │
-│     call        │                      │                 │
-└────────┬────────┘                      └─────────────────┘
-         │
-         │ 2. POST /session/:id/tool/call
-         ▼
-┌─────────────────┐
-│  OpenCode Server│
-│                 │
-│  3. Execute     │
-│     tool        │
-│                 │
-│  4. Return      │
-│     result      │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐                      ┌─────────────────┐
-│   Web Client    │ ── function_output ─→│  OpenAI Realtime│
-│                 │                      │                 │
-│  5. Forward     │                      │  6. Continue    │
-│     result      │                      │     response    │
-└─────────────────┘                      └─────────────────┘
-```
+- [TL;DR](#tldr)
+- [When are tools called?](#when-are-tools-called)
+- [How this repo implements it](#how-this-repo-implements-it)
+  - [Client](#client)
+  - [Server](#server)
+- [API shapes](#api-shapes)
+  - [`GET /session/:id/tools`](#get-sessionidtools)
+  - [`POST /session/:id/tool/call`](#post-sessionidtoolcall)
+- [Interruption + cancellation](#interruption--cancellation)
+- [Permissions + security](#permissions--security)
+- [Best practices (voice)](#best-practices-voice)
 
-## When Are Tools Called?
+## TL;DR
 
-OpenAI Realtime uses **VAD** (Voice Activity Detection) to determine turn boundaries:
+- OpenAI Realtime emits function calls (“tool calls”) to the browser.
+- The browser executes them by calling OpenCode’s `POST /session/:id/tool/call`.
+- The server stores the execution as a `ToolPart` and returns `{ callId, result, error? }`.
+- Voice mode intentionally exposes a **small tool set** to the realtime model: `glob`, `grep`, `task`.
+  - Heavy work (read/write/edit/bash/web) is delegated via `task` to a text subagent to keep realtime token usage bounded.
 
-1. **User speaks** → Audio streamed to OpenAI
-2. **User pauses** → VAD detects silence or sentence end
-3. **Model responds** → May include tool calls
-4. **Tool results fed back** → Model continues with tool output
+## When are tools called?
 
-**Important**: Tools are called **after** the user stops speaking, not during.
+Tool calls happen after OpenAI decides a user turn ended (VAD):
 
-### Conversation Timeline
+1. User speaks → audio streamed to OpenAI over WebRTC
+2. User pauses → VAD closes the turn
+3. Model responds → may include tool calls
+4. Tool results are provided back to the model → response continues
 
-```
-User speaking:     |████████████████|
-VAD detection:                      |░░░|
-Model thinking:                          |▒▒|
-Tool call:                               |████|  (read_file)
-Tool execution:                              |████████|
-Model continues:                                        |████████████|
-Audio output:                                |▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓|
-```
+## How this repo implements it
 
-## Client-Side Handling
+### Client
 
-```typescript
-// In voice-mode.tsx or useRealtimeConnection hook
-session.on("function_call", async (call) => {
-  console.log("Tool call:", call.name, call.arguments)
+The client does **not** manually handle raw function-call events. Instead, it:
 
-  // Forward to server via SDK
-  const result = await sdk.client.session.tool.call({
-    sessionID,
-    toolName: call.name,
-    callId: call.callId,
-    arguments: JSON.parse(call.arguments),
-  })
+1. Fetches tool definitions from the server (`GET /session/:id/tools`)
+2. Wraps them as executable SDK tools (Agents SDK `tool()` wrappers)
+3. Passes them into `new RealtimeAgent({ tools })`
 
-  // Send result back to OpenAI
-  session.sendFunctionCallOutput(call, result.data?.output ?? "")
-})
-```
+Key files:
 
-## Server-Side Execution
+- [`packages/app/src/hooks/use-realtime-connection.ts`](../../packages/app/src/hooks/use-realtime-connection.ts)
+- [`packages/app/src/util/openai-realtime-tool.ts`](../../packages/app/src/util/openai-realtime-tool.ts)
+- [`packages/app/src/context/voice-mode.tsx`](../../packages/app/src/context/voice-mode.tsx) (transcripts + UI)
 
-```typescript
-// POST /session/:sessionID/tool/call
-async function handleToolCall(sessionID: string, input: ToolCallInput) {
-  const { call_id, name, arguments: argsJson } = input
+### Server
 
-  try {
-    const args = JSON.parse(argsJson)
+The server implementation is the `SessionTool` module:
 
-    // Get tool from registry
-    const tool = await Tool.get(name)
-    if (!tool) {
-      return {
-        call_id,
-        output: JSON.stringify({ error: `Unknown tool: ${name}` }),
-      }
-    }
+- `SessionTool.list()` returns tool definitions in OpenAI “function tool” format (JSON Schema) and filters to the voice-safe subset.
+- `SessionTool.call()` executes the tool via `ToolRegistry`, stores a `ToolPart`, and returns the tool output to the client.
 
-    // Execute tool
-    const result = await tool.execute(args, { sessionID })
+Key files:
 
-    return {
-      call_id,
-      output: typeof result === "string" ? result : JSON.stringify(result),
-    }
-  } catch (err) {
-    return {
-      call_id,
-      output: JSON.stringify({ error: err.message }),
-    }
-  }
+- [`packages/opencode/src/session/tool.ts`](../../packages/opencode/src/session/tool.ts)
+- [`packages/opencode/src/tool/registry.ts`](../../packages/opencode/src/tool/registry.ts)
+- Routes: [`packages/opencode/src/server/routes/session.ts`](../../packages/opencode/src/server/routes/session.ts)
+
+## API shapes
+
+### `GET /session/:id/tools`
+
+Returns tools in OpenAI function format (already filtered to the voice-safe subset):
+
+- `glob` — file path discovery (bounded output)
+- `grep` — content search (bounded output)
+- `task` — delegate heavy work to a text subagent
+
+Shape (simplified):
+
+```ts
+type ToolDefinition = {
+  type: "function"
+  name: string
+  description: string
+  parameters: unknown // JSON Schema
+  strict: true
 }
 ```
 
-## Tool Definition Format
+Implementation: `SessionTool.list()` in [`packages/opencode/src/session/tool.ts`](../../packages/opencode/src/session/tool.ts)
 
-Tools are defined in OpenAI's function format:
+### `POST /session/:id/tool/call`
 
-```typescript
+Executes a tool in the context of a session and returns a result suitable to relay back into the realtime model.
+
+Request body (current):
+
+```ts
 {
-  type: "function",
-  name: "read_file",
-  description: "Read the contents of a file",
-  parameters: {
-    type: "object",
-    properties: {
-      path: {
-        type: "string",
-        description: "The file path to read"
-      }
-    },
-    required: ["path"]
-  }
+  toolName: string
+  callId: string
+  arguments: Record<string, unknown>
+  model: { providerID: string; modelID: string } // used for tool selection + task subagent inheritance
+  agent?: string                                // tool context labeling
 }
 ```
 
-The server will provide available tools via `GET /session/:sessionID/tools` (Phase 4).
+Response body (current):
 
-## Interruption Handling
-
-When the user speaks while a tool is executing:
-
-```
-Tool running:         |████████████████|
-User speaks:                |████████████|  ← INTERRUPTION
-```
-
-1. VAD detects speech → `speech_started` event
-2. Client receives event
-3. Client cancels pending tool HTTP request (AbortController)
-4. Tool execution may be aborted server-side
-5. New user turn begins
-
-### AbortSignal Support
-
-Tools should support cancellation:
-
-```typescript
-async function executeWithAbort(args: Args, signal: AbortSignal) {
-  // Check periodically
-  if (signal.aborted) {
-    return { interrupted: true, reason: "user_speech" }
-  }
-
-  // Long operation...
-  const result = await someOperation()
-
-  if (signal.aborted) {
-    return { interrupted: true, partial: result }
-  }
-
-  return result
-}
-```
-
-### Interrupted Tool State
-
-```typescript
-type ToolStatus = "pending" | "running" | "completed" | "error" | "interrupted"
-
-interface InterruptedState {
-  status: "interrupted"
-  input: Record<string, any>
-  reason: "user_speech" | "response_cancel" | "connection_lost"
-  partialOutput?: string
-}
-```
-
-## Permission Handling
-
-Permissions work the same as text mode:
-
-```typescript
-// Tool requests permission
-await ctx.ask({
-  permission: "bash",
-  patterns: ["rm -rf /tmp/*"],
-  description: "Delete temporary files",
-})
-```
-
-In realtime mode:
-
-1. Tool execution pauses at permission request
-2. Server sends permission request to client via HTTP response
-3. Client shows permission dialog
-4. User grants/denies
-5. Tool execution continues or fails
-
-**Note**: Voice-based permission granting requires careful UX design. Initial implementation uses UI buttons.
-
-## Best Practices
-
-1. **Keep tools fast**: Long-running tools block the conversation
-2. **Support AbortSignal**: Tools should check for cancellation
-3. **Provide progress updates**: For long operations, stream status
-4. **Handle partial results**: If interrupted, save what was completed
-5. **Limit tool complexity**: Voice users expect quick responses
-
-## Example Tools
-
-### Read File
-
-```typescript
+```ts
 {
-  type: "function",
-  name: "read_file",
-  description: "Read the contents of a file",
-  parameters: {
-    type: "object",
-    properties: {
-      path: { type: "string", description: "File path" }
-    },
-    required: ["path"]
-  }
+  callId: string
+  result: unknown
+  error?: string
 }
 ```
 
-### Run Command
+Implementation: `SessionTool.call()` in [`packages/opencode/src/session/tool.ts`](../../packages/opencode/src/session/tool.ts)
 
-```typescript
-{
-  type: "function",
-  name: "run_command",
-  description: "Execute a shell command",
-  parameters: {
-    type: "object",
-    properties: {
-      command: { type: "string", description: "Command to run" }
-    },
-    required: ["command"]
-  }
-}
-```
+## Interruption + cancellation
 
-### Search Files
+- The realtime model supports interruption (VAD “speech_started” can stop audio playback).
+- Tool execution via `POST /session/:id/tool/call` is currently **synchronous** and does not propagate cancellation to the server.
 
-```typescript
-{
-  type: "function",
-  name: "search_files",
-  description: "Search for files matching a pattern",
-  parameters: {
-    type: "object",
-    properties: {
-      pattern: { type: "string", description: "Glob pattern" },
-      path: { type: "string", description: "Directory to search" }
-    },
-    required: ["pattern"]
-  }
-}
-```
+If we need true cancellation, likely options are:
 
-## Security Considerations
+- Make `/tool/call` async (return a handle, stream progress over SSE, poll for completion)
+- Or propagate an AbortSignal-like mechanism over HTTP + store `interrupted` tool state
 
-1. **Tool Authorization**: Validate which tools the session can access
-2. **Argument Validation**: Validate tool arguments before execution
-3. **Sandboxing**: Execute tools in isolated environment
-4. **Rate Limiting**: Prevent abuse of tool execution
-5. **Audit Logging**: Log all tool executions
+See the discussion in [`PHASE-4.md`](./PHASE-4.md).
+
+## Permissions + security
+
+Important current behavior:
+
+- `POST /session/:id/tool/call` runs with `ctx.ask` as a **no-op**, so it bypasses interactive permission prompts.
+- Safety for realtime is currently achieved by:
+  - Keeping the tool set small (`glob`, `grep`, `task`)
+  - Delegating heavy operations to server-side text subagents (where permission UX exists)
+
+If you expose an OpenCode server publicly, follow the hardening guidance in [`docs/server/README.md`](../server/README.md).
+
+## Best practices (voice)
+
+- Prefer `glob` + `grep` for quick, bounded operations.
+- Prefer `task` for anything that might produce large outputs (file reads, edits, long commands, web fetch/search).
+- Keep the voice prompt small; avoid injecting large instruction files into the realtime context.
