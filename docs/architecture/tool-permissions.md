@@ -96,21 +96,21 @@ type Ruleset = Rule[]
 
 Different tools use different permission types:
 
-| Permission           | Used By                               | Pattern Represents |
-| -------------------- | ------------------------------------- | ------------------ |
-| `read`               | `read` tool                           | File path          |
-| `edit`               | `edit`, `write`, `apply_patch`        | File path          |
-| `bash`               | `bash` tool                           | Command prefix     |
-| `grep`               | `grep` tool                           | Search pattern (regex) |
-| `glob`               | `glob` tool                           | Glob pattern       |
-| `external_directory` | Any file access outside workspace     | Directory path     |
-| `doom_loop`          | Session processor                     | `*` (system-wide)  |
-| `question`           | `question` tool                       | `*`                |
-| `plan_enter`         | `plan_enter` tool                     | `*`                |
-| `plan_exit`          | `plan_exit` tool                      | `*`                |
-| `todoread`           | `todoread` tool                       | `*`                |
-| `todowrite`          | `todowrite` tool                      | `*`                |
-| `{mcp_tool}`         | MCP tools                             | `*`                |
+| Permission           | Used By                           | Pattern Represents     |
+| -------------------- | --------------------------------- | ---------------------- |
+| `read`               | `read` tool                       | File path              |
+| `edit`               | `edit`, `write`, `apply_patch`    | File path              |
+| `bash`               | `bash` tool                       | Command prefix         |
+| `grep`               | `grep` tool                       | Search pattern (regex) |
+| `glob`               | `glob` tool                       | Glob pattern           |
+| `external_directory` | Any file access outside workspace | Directory path         |
+| `doom_loop`          | Session processor                 | `*` (system-wide)      |
+| `question`           | `question` tool                   | `*`                    |
+| `plan_enter`         | `plan_enter` tool                 | `*`                    |
+| `plan_exit`          | `plan_exit` tool                  | `*`                    |
+| `todoread`           | `todoread` tool                   | `*`                    |
+| `todowrite`          | `todowrite` tool                  | `*`                    |
+| `{mcp_tool}`         | MCP tools                         | `*`                    |
 
 ---
 

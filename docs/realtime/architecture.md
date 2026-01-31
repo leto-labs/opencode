@@ -100,24 +100,24 @@ The realtime architecture uses a **direct client connection** model:
 
 ### Web Client
 
-| Component          | Responsibility                    |
-| ------------------ | --------------------------------- |
-| [`voice-mode.tsx`](../../packages/app/src/context/voice-mode.tsx) | Voice mode state, transcript persistence, UI updates |
-| [`use-realtime-connection.ts`](../../packages/app/src/hooks/use-realtime-connection.ts) | WebRTC connection lifecycle + session config + history injection |
-| Web Audio / `<audio>` element | Microphone capture + speaker playback (managed by `OpenAIRealtimeWebRTC`) |
-| [`openai-realtime-tool.ts`](../../packages/app/src/util/openai-realtime-tool.ts) | Server tool definitions → executable `@openai/agents/realtime` tools |
+| Component                                                                               | Responsibility                                                            |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| [`voice-mode.tsx`](../../packages/app/src/context/voice-mode.tsx)                       | Voice mode state, transcript persistence, UI updates                      |
+| [`use-realtime-connection.ts`](../../packages/app/src/hooks/use-realtime-connection.ts) | WebRTC connection lifecycle + session config + history injection          |
+| Web Audio / `<audio>` element                                                           | Microphone capture + speaker playback (managed by `OpenAIRealtimeWebRTC`) |
+| [`openai-realtime-tool.ts`](../../packages/app/src/util/openai-realtime-tool.ts)        | Server tool definitions → executable `@openai/agents/realtime` tools      |
 
 ### OpenCode Server
 
-| Endpoint                          | Responsibility                  |
-| --------------------------------- | ------------------------------- |
-| `POST /session/:id/client_secret` | Generate ephemeral key (cached) |
-| `GET /session/:id/client_secret`  | Get cached ephemeral key        |
-| `POST /session/:id/transcript`    | Persist transcript parts        |
-| `GET /session/:id/message`        | Retrieve message history        |
-| `POST /session/:id/tool/call`     | Execute tool, return result     |
+| Endpoint                          | Responsibility                                         |
+| --------------------------------- | ------------------------------------------------------ |
+| `POST /session/:id/client_secret` | Generate ephemeral key (cached)                        |
+| `GET /session/:id/client_secret`  | Get cached ephemeral key                               |
+| `POST /session/:id/transcript`    | Persist transcript parts                               |
+| `GET /session/:id/message`        | Retrieve message history                               |
+| `POST /session/:id/tool/call`     | Execute tool, return result                            |
 | `GET /session/:id/tools`          | List tools (voice-safe subset: `glob`, `grep`, `task`) |
-| `GET /session/:id/system_prompt`  | Assembled instructions          |
+| `GET /session/:id/system_prompt`  | Assembled instructions                                 |
 
 ### OpenAI Realtime API
 

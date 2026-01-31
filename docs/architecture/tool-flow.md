@@ -32,18 +32,18 @@ OpenCode provides a set of built-in tools registered in [`packages/opencode/src/
 
 ### Core Tools
 
-| Tool          | Description                | Key Parameters                         |
-| ------------- | -------------------------- | -------------------------------------- |
-| `read`        | Read file contents         | `filePath`, `offset?`, `limit?`        |
-| `write`       | Create/overwrite files     | `filePath`, `content`                  |
+| Tool          | Description                | Key Parameters                                      |
+| ------------- | -------------------------- | --------------------------------------------------- |
+| `read`        | Read file contents         | `filePath`, `offset?`, `limit?`                     |
+| `write`       | Create/overwrite files     | `filePath`, `content`                               |
 | `edit`        | Edit file (search/replace) | `filePath`, `oldString`, `newString`, `replaceAll?` |
-| `bash`        | Execute shell commands     | `command`, `workdir?`, `timeout?`, `description`     |
-| `glob`        | Find files by pattern      | `pattern`, `path?`                     |
-| `grep`        | Search file contents       | `pattern`, `path?`, `include?`         |
-| `webfetch`    | Fetch web content          | `url`, `format?`, `timeout?`           |
-| `websearch`   | Web search (EXA via MCP)   | `query`, `numResults?`, `type?`, `livecrawl?` |
-| `codesearch`  | Code search                | `query`                                |
-| `apply_patch` | Apply patch text           | `patchText` (used for GPT models)      |
+| `bash`        | Execute shell commands     | `command`, `workdir?`, `timeout?`, `description`    |
+| `glob`        | Find files by pattern      | `pattern`, `path?`                                  |
+| `grep`        | Search file contents       | `pattern`, `path?`, `include?`                      |
+| `webfetch`    | Fetch web content          | `url`, `format?`, `timeout?`                        |
+| `websearch`   | Web search (EXA via MCP)   | `query`, `numResults?`, `type?`, `livecrawl?`       |
+| `codesearch`  | Code search                | `query`                                             |
+| `apply_patch` | Apply patch text           | `patchText` (used for GPT models)                   |
 
 ### Extended Tools
 

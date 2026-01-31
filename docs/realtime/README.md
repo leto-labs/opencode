@@ -67,22 +67,22 @@ If the OpenAI provider is connected, use the phone/call controls in the prompt i
 
 ### Client
 
-| File                                                | Purpose                |
-| --------------------------------------------------- | ---------------------- |
-| [`packages/app/src/context/voice-mode.tsx`](../../packages/app/src/context/voice-mode.tsx)           | Voice mode context     |
-| [`packages/app/src/hooks/use-realtime-connection.ts`](../../packages/app/src/hooks/use-realtime-connection.ts) | WebRTC connection hook |
-| [`packages/app/src/util/openai-realtime-tool.ts`](../../packages/app/src/util/openai-realtime-tool.ts)         | Tool definitions + server relay |
-| [`packages/app/src/context/local.tsx`](../../packages/app/src/context/local.tsx)                                | Model + agent selection (used for tool context) |
+| File                                                                                                           | Purpose                                         |
+| -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| [`packages/app/src/context/voice-mode.tsx`](../../packages/app/src/context/voice-mode.tsx)                     | Voice mode context                              |
+| [`packages/app/src/hooks/use-realtime-connection.ts`](../../packages/app/src/hooks/use-realtime-connection.ts) | WebRTC connection hook                          |
+| [`packages/app/src/util/openai-realtime-tool.ts`](../../packages/app/src/util/openai-realtime-tool.ts)         | Tool definitions + server relay                 |
+| [`packages/app/src/context/local.tsx`](../../packages/app/src/context/local.tsx)                               | Model + agent selection (used for tool context) |
 
 ### Server
 
-| File                                             | Purpose                  |
-| ------------------------------------------------ | ------------------------ |
-| [`packages/opencode/src/session/client_secret.ts`](../../packages/opencode/src/session/client_secret.ts) | Ephemeral key management |
-| [`packages/opencode/src/session/transcript.ts`](../../packages/opencode/src/session/transcript.ts)       | Transcript storage       |
-| [`packages/opencode/src/session/tool.ts`](../../packages/opencode/src/session/tool.ts)                   | Voice-safe tool list (`glob`, `grep`, `task`) + `/tool/call` execution |
+| File                                                                                                     | Purpose                                                                                       |
+| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| [`packages/opencode/src/session/client_secret.ts`](../../packages/opencode/src/session/client_secret.ts) | Ephemeral key management                                                                      |
+| [`packages/opencode/src/session/transcript.ts`](../../packages/opencode/src/session/transcript.ts)       | Transcript storage                                                                            |
+| [`packages/opencode/src/session/tool.ts`](../../packages/opencode/src/session/tool.ts)                   | Voice-safe tool list (`glob`, `grep`, `task`) + `/tool/call` execution                        |
 | [`packages/opencode/src/server/routes/session.ts`](../../packages/opencode/src/server/routes/session.ts) | Session endpoints (`/client_secret`, `/transcript`, `/tools`, `/tool/call`, `/system_prompt`) |
-| [`packages/opencode/src/tool/registry.ts`](../../packages/opencode/src/tool/registry.ts)                | Full tool registry (server-side inference + subagents) |
+| [`packages/opencode/src/tool/registry.ts`](../../packages/opencode/src/tool/registry.ts)                 | Full tool registry (server-side inference + subagents)                                        |
 
 ## Documentation
 

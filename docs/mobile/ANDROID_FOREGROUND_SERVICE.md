@@ -193,11 +193,11 @@ Start a voice session on the phone. If the foreground service starts, you'll see
 
 ## Key Files
 
-| File                                                                | Purpose                                               |
-| ------------------------------------------------------------------- | ----------------------------------------------------- |
-| `packages/app/src/hooks/use-realtime-connection.ts`                 | Frontend: calls startService/stopService              |
-| `packages/desktop/src-tauri/src/lib.rs`                             | Plugin initialization (`#[cfg(mobile)]`)              |
-| `packages/desktop/src-tauri/capabilities/default.json`              | Permission grants for startService/stopService        |
+| File                                                                                           | Purpose                                               |
+| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `packages/app/src/hooks/use-realtime-connection.ts`                                            | Frontend: calls startService/stopService              |
+| `packages/desktop/src-tauri/src/lib.rs`                                                        | Plugin initialization (`#[cfg(mobile)]`)              |
+| `packages/desktop/src-tauri/capabilities/default.json`                                         | Permission grants for startService/stopService        |
 | `packages/desktop/src-tauri/plugins/foreground-service/src/lib.rs`                             | Rust plugin API                                       |
 | `packages/desktop/src-tauri/plugins/foreground-service/android/.../ForegroundServicePlugin.kt` | Kotlin: startService/stopService commands             |
 | `packages/desktop/src-tauri/plugins/foreground-service/android/.../ForegroundService.kt`       | Kotlin: foreground service + notification + wake lock |

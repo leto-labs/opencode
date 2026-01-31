@@ -184,7 +184,13 @@ Implementation: [`packages/opencode/src/tool/edit.ts`](../../packages/opencode/s
   output: string // Success message (+ optional LSP diagnostics block)
   metadata: {
     diff: string // Unified diff
-    filediff: { additions: number; deletions: number; file: string; before: string; after: string }
+    filediff: {
+      additions: number
+      deletions: number
+      file: string
+      before: string
+      after: string
+    }
     diagnostics: Record<string, unknown> // LSP diagnostics map
   }
 }
@@ -219,12 +225,12 @@ Implementation: [`packages/opencode/src/tool/bash.ts`](../../packages/opencode/s
 
 ```typescript
 {
-  title: string                 // The provided description
-  output: string                // stdout + stderr combined
+  title: string // The provided description
+  output: string // stdout + stderr combined
   metadata: {
-    exit: number | null         // Process exit code (if available)
+    exit: number | null // Process exit code (if available)
     description: string
-    output: string              // Truncated copy for UI metadata
+    output: string // Truncated copy for UI metadata
   }
 }
 ```
@@ -441,10 +447,17 @@ Implementation: [`packages/opencode/src/tool/apply_patch.ts`](../../packages/ope
 ```typescript
 {
   title: string
-  output: string                // Success/failure details
+  output: string // Success/failure details
   metadata: {
     diff: string
-    files: Array<{ filePath: string; relativePath: string; type: string; diff: string; additions: number; deletions: number }>
+    files: Array<{
+      filePath: string
+      relativePath: string
+      type: string
+      diff: string
+      additions: number
+      deletions: number
+    }>
     diagnostics: Record<string, unknown>
   }
 }
@@ -477,10 +490,10 @@ Implementation: [`packages/opencode/src/tool/question.ts`](../../packages/openco
 
 ```typescript
 {
-  title: string                 // e.g. "Asked 2 questions"
-  output: string                // Summary string including user answers
+  title: string // e.g. "Asked 2 questions"
+  output: string // Summary string including user answers
   metadata: {
-    answers: unknown            // Raw answers array (see Question.Answer)
+    answers: unknown // Raw answers array (see Question.Answer)
   }
 }
 ```
@@ -515,7 +528,10 @@ Implementation: [`packages/opencode/src/tool/task.ts`](../../packages/opencode/s
   output: string // Final subagent text + <task_metadata> block
   metadata: {
     sessionId: string
-    model: { providerID: string; modelID: string }
+    model: {
+      providerID: string
+      modelID: string
+    }
     summary: Array<{ id: string; tool: string; state: { status: string; title?: string } }>
   }
 }
