@@ -108,7 +108,7 @@ packages/
 └── ...
 ```
 
-> This folder (`docs/`) is the *developer* markdown docs. `packages/docs/` and `packages/web/` are for the public docs site.
+> This folder (`docs/`) is the _developer_ markdown docs. `packages/docs/` and `packages/web/` are for the public docs site.
 
 ## Common developer tasks
 
@@ -129,12 +129,12 @@ Use this guide: [`docs/architecture/adding-routes.md`](./architecture/adding-rou
 
 ## Key source entry points
 
-| Area | File |
-| --- | --- |
-| Server bootstrap | [`packages/opencode/src/server/server.ts`](../packages/opencode/src/server/server.ts) |
-| Session routes | [`packages/opencode/src/server/routes/session.ts`](../packages/opencode/src/server/routes/session.ts) |
-| Agent loop (server-side inference) | [`packages/opencode/src/session/prompt.ts`](../packages/opencode/src/session/prompt.ts) |
-| Client-side transcript persistence | [`packages/opencode/src/session/transcript.ts`](../packages/opencode/src/session/transcript.ts) |
-| Client-side tool execution | [`packages/opencode/src/session/tool.ts`](../packages/opencode/src/session/tool.ts) |
-| Web app prompt UI | [`packages/app/src/components/prompt-input.tsx`](../packages/app/src/components/prompt-input.tsx) |
-| Voice mode (client) | [`packages/app/src/context/voice-mode.tsx`](../packages/app/src/context/voice-mode.tsx) |
+| Area                               | File                                                                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Server bootstrap                   | [`packages/opencode/src/server/server.ts`](../packages/opencode/src/server/server.ts)                 |
+| Session routes                     | [`packages/opencode/src/server/routes/session.ts`](../packages/opencode/src/server/routes/session.ts) |
+| Agent loop (server-side inference) | [`packages/opencode/src/session/prompt.ts`](../packages/opencode/src/session/prompt.ts)               |
+| Client-side transcript persistence | [`packages/opencode/src/session/transcript.ts`](../packages/opencode/src/session/transcript.ts)       |
+| Client-side tool execution         | [`packages/opencode/src/session/tool.ts`](../packages/opencode/src/session/tool.ts)                   |
+| Web app prompt UI                  | [`packages/app/src/components/prompt-input.tsx`](../packages/app/src/components/prompt-input.tsx)     |
+| Voice mode (client)                | [`packages/app/src/context/voice-mode.tsx`](../packages/app/src/context/voice-mode.tsx)               |

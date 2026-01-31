@@ -51,14 +51,14 @@ The mobile app provides the full OpenCode UI (text chat + voice mode) on phones 
 
 ## Key Differences from Desktop
 
-| Aspect           | Desktop                  | Mobile                         |
-| ---------------- | ------------------------ | ------------------------------ |
-| Server           | Local sidecar subprocess | Remote connection              |
-| Input            | Keyboard/Mouse + Voice   | Touch + Voice                  |
-| Voice transport  | WebRTC in WebView        | WebRTC in WebView (same)       |
+| Aspect           | Desktop                  | Mobile                                       |
+| ---------------- | ------------------------ | -------------------------------------------- |
+| Server           | Local sidecar subprocess | Remote connection                            |
+| Input            | Keyboard/Mouse + Voice   | Touch + Voice                                |
+| Voice transport  | WebRTC in WebView        | WebRTC in WebView (same)                     |
 | Background voice | N/A                      | Device-dependent (foreground service plugin) |
-| File pickers     | Native OS dialogs        | Server-based directory picker  |
-| Build            | Single binary            | Xcode (iOS) / Gradle (Android) |
+| File pickers     | Native OS dialogs        | Server-based directory picker                |
+| Build            | Single binary            | Xcode (iOS) / Gradle (Android)               |
 
 ## Getting Started
 

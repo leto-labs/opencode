@@ -602,7 +602,7 @@ Refactor voice tool calling to use a subagent architecture that avoids token lim
 
 #### Step 1: Use `task` as the delegation tool (implemented)
 
-In this repo, voice mode delegates heavy work via the existing `task` tool (not a new `subagent` tool). The snippet below is an *alternative* approach that was considered.
+In this repo, voice mode delegates heavy work via the existing `task` tool (not a new `subagent` tool). The snippet below is an _alternative_ approach that was considered.
 
 ```typescript
 // packages/opencode/src/tool/voice-subagent.ts

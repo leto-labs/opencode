@@ -273,10 +273,10 @@ See [tool-flow.md](./tool-flow.md) for details on how tool calls work in both mo
 
 ### Endpoints Used
 
-| Endpoint                       | Purpose                                                                               |
-| ------------------------------ | ------------------------------------------------------------------------------------- |
+| Endpoint                       | Purpose                                                                                                        |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | `POST /session/:id/transcript` | Store user/assistant transcript (accepts optional `messageID` and per-part `id` fields for optimistic updates) |
-| `POST /session/:id/tool/call`  | Execute tool and return result                                                        |
+| `POST /session/:id/tool/call`  | Execute tool and return result                                                                                 |
 
 **Note:** The `/transcript` endpoint accepts an optional `messageID` and optional part IDs (`parts[].id`). When provided, the server uses these IDs instead of generating new ones, enabling the optimistic update pattern.
 
@@ -284,10 +284,10 @@ See [tool-flow.md](./tool-flow.md) for details on how tool calls work in both mo
 
 Client-side inference handles two input types:
 
-| Input     | Source                     | Transcription      | Storage                                              |
-| --------- | -------------------------- | ------------------ | ---------------------------------------------------- |
+| Input     | Source                     | Transcription      | Storage                                                              |
+| --------- | -------------------------- | ------------------ | -------------------------------------------------------------------- |
 | **Text**  | User types in prompt input | Not needed         | If call is active: `prompt-input.tsx` stores via transcript endpoint |
-| **Voice** | User speaks via microphone | OpenAI transcribes | `voice-mode.tsx` stores when transcription completes |
+| **Voice** | User speaks via microphone | OpenAI transcribes | `voice-mode.tsx` stores when transcription completes                 |
 
 ### Client-Side Architecture
 
@@ -371,11 +371,11 @@ Server ────────────────────────�
 
 ## Related Files
 
-| File                             | Purpose                          |
-| -------------------------------- | -------------------------------- |
+| File                                                                                                     | Purpose                          |
+| -------------------------------------------------------------------------------------------------------- | -------------------------------- |
 | [`packages/opencode/src/server/routes/session.ts`](../../packages/opencode/src/server/routes/session.ts) | HTTP route handlers              |
-| [`packages/opencode/src/session/prompt.ts`](../../packages/opencode/src/session/prompt.ts)              | Prompt processing and agent loop |
-| [`packages/opencode/src/session/message-v2.ts`](../../packages/opencode/src/session/message-v2.ts)      | Message and part schemas         |
-| [`packages/opencode/src/session/index.ts`](../../packages/opencode/src/session/index.ts)                | Session CRUD operations          |
-| [`packages/opencode/src/provider/provider.ts`](../../packages/opencode/src/provider/provider.ts)        | Model resolution                 |
-| [`packages/app/src/context/voice-mode.tsx`](../../packages/app/src/context/voice-mode.tsx)              | Client-side realtime handling    |
+| [`packages/opencode/src/session/prompt.ts`](../../packages/opencode/src/session/prompt.ts)               | Prompt processing and agent loop |
+| [`packages/opencode/src/session/message-v2.ts`](../../packages/opencode/src/session/message-v2.ts)       | Message and part schemas         |
+| [`packages/opencode/src/session/index.ts`](../../packages/opencode/src/session/index.ts)                 | Session CRUD operations          |
+| [`packages/opencode/src/provider/provider.ts`](../../packages/opencode/src/provider/provider.ts)         | Model resolution                 |
+| [`packages/app/src/context/voice-mode.tsx`](../../packages/app/src/context/voice-mode.tsx)               | Client-side realtime handling    |
